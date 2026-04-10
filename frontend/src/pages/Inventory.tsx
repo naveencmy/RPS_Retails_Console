@@ -15,7 +15,7 @@ export default function Inventory() {
   const [adjusting, setAdjusting] = useState(false);
 
   useEffect(() => {
-    Promise.all([InventoryAPI.getAll(), InventoryAPI.movements()])
+    Promise.all([InventoryAPI.getAll(), InventoryAPI.getMovements()])
       .then(([inv, mov]) => {
         setItems(inv);
         setMovements(mov);

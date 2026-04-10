@@ -10,7 +10,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     ReportAPI.dashboard()
-      .then(setData)
+      .then((data) => setData(data))
       .catch(() => setError("Failed to load dashboard data"))
       .finally(() => setLoading(false));
   }, []);

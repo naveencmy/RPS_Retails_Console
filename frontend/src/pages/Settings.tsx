@@ -90,7 +90,7 @@ export default function Settings() {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const data = await UserAPI.getUsers();
+      const data = await UserAPI.getAll();
       setUsers(data);
     } catch {
       toast.error("Failed to load users");
@@ -159,7 +159,7 @@ export default function Settings() {
   const handleBackupNow = async () => {
     setBackupLoading(true);
     try {
-      await BackupAPI.create();
+      await BackupAPI.createBackup();
       toast.success("Backup created successfully");
     } catch {
       toast.error("Backup failed. Please try again.");
@@ -175,7 +175,7 @@ export default function Settings() {
     }
     setRestoreLoading(true);
     try {
-      await BackupAPI.restore(restoreFile);
+      await BackupAPI.restoreBackup(restoreFile);
       toast.success("Database restored successfully");
       setRestoreFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";

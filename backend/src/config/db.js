@@ -1,16 +1,33 @@
 const { Pool } = require('pg')
-const env = require('./env')
 
+const isProduction = process.env.NODE_ENV === 'production'
+console.log("DB UPL:",process.env.DATABASE_URL)
 const pool = new Pool({
-  host: env.DB_HOST,
-  user: env.DB_USER,
-  password: env.DB_PASS,
-  database: env.DB_NAME,
-  port: env.DB_PORT,
-  max: 20,
-  idleTimeoutMillis: 30000
+  connectionString: process.env.DATABASE_URL,
+  ssl: isProduction
+    ? { rejectUnauthorized: false }
+    : false
 })
+
+// TEST CONNECTION
+const testConnection = async () => {
+  try {
+    const client = await pool.connect()
+    console.log("✅ DB CONNECTED SUCCESSFULLY")
+
+    const res = await client.query('SELECT NOW()')
+    console.log("🕒 DB TIME:", res.rows[0].now)
+
+    client.release()
+  } catch (err) {
+    console.error("❌ DB CONNECTION FAILED:", err.message)
+  }
+}
+
+testConnection()
+
 pool.on('error', (err) => {
-  console.error('Unexpected DB error', err)
+  console.error('DB error', err)
 })
+
 module.exports = pool

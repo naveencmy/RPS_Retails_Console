@@ -19,15 +19,15 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-app.use('/auth', authRoutes)
-app.use('/products', productRoutes)
-app.use('/sales', salesRoutes)
-app.use('/purchase', purchaseRoutes)
-app.use('/inventory', inventoryRoutes)
-app.use('/parties', partyRoutes)
-app.use('/reports', reportRoutes)
-app.use('/users', userRoutes)
-app.use('/backup', backupRoutes)
+app.use('/api/auth', authRoutes)
+app.use('/api/products', productRoutes)
+app.use('/api/sales', salesRoutes)
+app.use('/api/purchase', purchaseRoutes)
+app.use('/api/inventory', inventoryRoutes)
+app.use('/api/parties', partyRoutes)
+app.use('/api/reports', reportRoutes)
+app.use('/api/users', userRoutes)
+app.use('/api/backup', backupRoutes)
 
 app.use(errorMiddleware)
 app.get('/', (req,res)=>{
@@ -36,4 +36,7 @@ app.get('/', (req,res)=>{
     status: `running on ${PORT}`
   })
 })
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET missing")
+}
 module.exports = app

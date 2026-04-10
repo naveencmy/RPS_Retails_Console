@@ -1,0 +1,1962 @@
+Directory structure:
+└── backend/
+    ├── package.json
+    └── src/
+        ├── app.js
+        ├── server.js
+        ├── config/
+        │   ├── db.js
+        │   └── env.js
+        ├── controllers/
+        │   ├── authController.js
+        │   ├── backupController.js
+        │   ├── inventoryController.js
+        │   ├── partyController.js
+        │   ├── productController.js
+        │   ├── purchaseController.js
+        │   ├── reportController.js
+        │   ├── salesController.js
+        │   └── userController.js
+        ├── middleware/
+        │   ├── authMiddleware.js
+        │   ├── errorMiddleware.js
+        │   └── roleMiddleware.js
+        ├── repositories/
+        │   ├── inventoryRepository.js
+        │   ├── partyRepository.js
+        │   ├── productRepository.js
+        │   ├── purchaseRepository.js
+        │   ├── reportRepository.js
+        │   ├── salesRepository.js
+        │   └── userRepository.js
+        ├── routes/
+        │   ├── authRoutes.js
+        │   ├── backupRoutes.js
+        │   ├── inventoryRoutes.js
+        │   ├── partyRoutes.js
+        │   ├── productRoutes.js
+        │   ├── purchaseRoutes.js
+        │   ├── reportRoutes.js
+        │   ├── salesRoutes.js
+        │   └── userRoutes.js
+        ├── services/
+        │   ├── authService.js
+        │   ├── inventoryService.js
+        │   ├── partyService.js
+        │   ├── productService.js
+        │   ├── purchaseService.js
+        │   ├── reportService.js
+        │   ├── salesService.js
+        │   └── userService.js
+        └── utils/
+            ├── ApiError.js
+            └── logger.js
+
+================================================
+FILE: package.json
+================================================
+{
+  "name": "pos-backend",
+  "version": "1.0.0",
+  "description": "Retail POS Backend",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [],
+  "author": "Naveen",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "json2csv": "^6.0.0-alpha.2",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
+
+
+
+================================================
+FILE: src/app.js
+================================================
+const express = require('express')
+const cors = require('cors')
+
+const authRoutes = require('./routes/authRoutes')
+const productRoutes = require('./routes/productRoutes')
+const salesRoutes = require('./routes/salesRoutes')
+const purchaseRoutes = require('./routes/purchaseRoutes')
+const inventoryRoutes = require('./routes/inventoryRoutes')
+const partyRoutes = require('./routes/partyRoutes')
+const reportRoutes = require('./routes/reportRoutes')
+const userRoutes = require('./routes/userRoutes')
+const backupRoutes = require('./routes/backupRoutes')
+
+const errorMiddleware = require('./middleware/errorMiddleware')
+const { PORT } = require('./config/env')
+
+const app = express()
+
+app.use(cors())
+app.use(express.json())
+
+app.use('/auth', authRoutes)
+app.use('/products', productRoutes)
+app.use('/sales', salesRoutes)
+app.use('/purchase', purchaseRoutes)
+app.use('/inventory', inventoryRoutes)
+app.use('/parties', partyRoutes)
+app.use('/reports', reportRoutes)
+app.use('/users', userRoutes)
+app.use('/backup', backupRoutes)
+
+app.use(errorMiddleware)
+app.get('/', (req,res)=>{
+  res.json({
+    service: "POS Backend",
+    status: `running on ${PORT}`
+  })
+})
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' })
+})
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET missing")
+}
+module.exports = app
+
+
+================================================
+FILE: src/server.js
+================================================
+const app = require('./app')
+const env = require('./config/env')
+const logger= require('./utils/logger')
+logger.info(`POS Backend running on port ${env.PORT}`)
+app.listen(env.PORT, () => {
+  console.log(`POS Backend running on port ${env.PORT}`)
+})
+
+
+
+================================================
+FILE: src/config/db.js
+================================================
+const { Pool } = require('pg')
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+})
+
+pool.on('connect', () => {
+  console.log("Connected to DB")
+})
+
+pool.on('error', (err) => {
+  console.error('DB error', err)
+})
+
+module.exports = pool
+
+
+================================================
+FILE: src/config/env.js
+================================================
+require('dotenv').config()
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET missing")
+}
+module.exports = {
+  PORT: process.env.PORT || 5000,
+  JWT_SECRET: process.env.JWT_SECRET,
+  DB_HOST: process.env.DB_HOST,
+  DB_USER: process.env.DB_USER,
+  DB_PASS: process.env.DB_PASS,
+  DB_NAME: process.env.DB_NAME,
+  DB_PORT: process.env.DB_PORT
+}
+
+
+================================================
+FILE: src/controllers/authController.js
+================================================
+const authService = require('../services/authService')
+
+exports.login = async(req,res,next)=>{
+  try{
+    const {username,password} = req.body
+    const data = await authService.login(username,password)
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+
+}
+exports.me = async (req, res, next) => {
+  try {
+    res.json({ id: req.user.id, role: req.user.role })
+  } catch (err) { next(err) }
+}
+
+exports.changePassword = async (req,res,next)=>{
+  try{
+    const {current,newPassword} = req.body
+    const result = await authService.changePassword(
+      req.user.id,
+      current,
+      newPassword
+    )
+    res.json(result)
+  }catch(err){ next(err) }
+}
+
+
+================================================
+FILE: src/controllers/backupController.js
+================================================
+const { exec } = require('child_process')
+
+exports.backup = async (req,res,next)=>{
+  exec('pg_dump your_db > backup.sql',(err)=>{
+    if(err) return next(err)
+    res.json({message:"Backup created"})
+  })
+}
+
+exports.restore = async (req,res,next)=>{
+  exec('psql your_db < backup.sql',(err)=>{
+    if(err) return next(err)
+    res.json({message:"Restored"})
+  })
+}
+
+
+================================================
+FILE: src/controllers/inventoryController.js
+================================================
+const inventoryService = require('../services/inventoryService')
+
+exports.getInventory = async (req,res,next)=>{
+  try{
+    const data = await inventoryService.getInventory()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getStockMovements = async (req,res,next)=>{
+  try{
+    const data = await inventoryService.getStockMovements()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getLowStock = async (req,res,next)=>{
+  try{
+    const data = await inventoryService.getLowStock()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.adjustInventory = async (req,res,next)=>{
+  try{
+    const result = await inventoryService.adjustInventory(
+      req.body,
+      req.user.id
+    )
+    res.json(result)
+  }catch(err){
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/partyController.js
+================================================
+const partyService = require('../services/partyService')
+
+exports.getParties = async (req, res, next) => {
+  try {
+    const data = await partyService.getParties()
+    res.json(data)
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.getPartyById = async (req, res, next) => {
+  try {
+    const party = await partyService.getPartyById(req.params.id)
+    res.json(party)
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.createParty = async (req, res, next) => {
+  try {
+    const party = await partyService.createParty(req.body)
+    res.json(party)
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.updateParty = async (req, res, next) => {
+  try {
+    const party = await partyService.updateParty(req.params.id, req.body)
+    res.json(party)
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.getPartyLedger = async (req, res, next) => {
+  try {
+    const ledger = await partyService.getPartyLedger(req.params.id)
+    res.json(ledger)
+  } catch (err) {
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/productController.js
+================================================
+const productService = require('../services/productService')
+exports.getProducts = async (req,res,next)=>{
+  try{
+    const products = await productService.getProducts()
+    res.json(products)
+  }catch(err){
+    next(err)
+  }
+
+}
+
+exports.searchProducts = async (req,res,next)=>{
+  try{
+    const products = await productService.searchProducts(req.query.q)
+    res.json(products)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getProductByBarcode = async (req,res,next)=>{
+  try{
+    const product = await productService.getProductByBarcode(req.params.code)
+    res.json(product)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.createProduct = async (req,res,next)=>{
+  try{
+    const product = await productService.createProduct(req.body)
+    res.json(product)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.updateProduct = async (req,res,next)=>{
+  try{
+    const product = await productService.updateProduct(req.params.id,req.body)
+    res.json(product)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.deleteProduct = async (req,res,next)=>{
+  try{
+    await productService.deleteProduct(req.params.id)
+    res.json({message:"Product deleted"})
+  }catch(err){
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/purchaseController.js
+================================================
+const purchaseService = require('../services/purchaseService')
+
+exports.createPurchase = async (req, res, next) => {
+  try {
+    const purchase = await purchaseService.createPurchase(
+      req.body,
+      req.user.id
+    )
+    res.json(purchase)
+  } catch (err) {
+    next(err)
+  }
+}
+exports.getPurchaseById = async (req, res, next) => {
+  try {
+    const data = await purchaseService.getPurchaseById(req.params.id)
+    res.json(data)
+  } catch (err) {
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/reportController.js
+================================================
+const reportService = require('../services/reportService')
+
+exports.getDashboard = async (req,res,next)=>{
+  try{
+    const data = await reportService.getDashboard()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getSalesReport = async (req,res,next)=>{
+  try{
+    const data = await reportService.getSalesReport(
+      req.query.from,
+      req.query.to
+    )
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getTopProducts = async (req,res,next)=>{
+  try{
+    const data = await reportService.getTopProducts()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getInventoryValue = async (req,res,next)=>{
+  try{
+    const data = await reportService.getInventoryValue()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getReceivables = async (req,res,next)=>{
+  try{
+    const data = await reportService.getReceivables()
+    res.json(data)
+  }catch(err){
+    next(err)
+  }
+}
+exports.exportSalesReport = async (req,res,next)=>{
+  try{
+    const {from,to} = req.query
+    const data = await reportService.getSalesReport(from,to)
+
+    const { Parser } = require('json2csv')
+
+    const parser = new Parser()
+    const csv = parser.parse(data)
+
+    res.header('Content-Type','text/csv')
+    res.attachment('sales-report.csv')
+    return res.send(csv)
+
+  }catch(err){
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/salesController.js
+================================================
+const salesService = require('../services/salesService')
+
+exports.createSale = async (req,res,next)=>{
+  try{
+    const sale = await salesService.createSale(
+      req.body,
+      req.user.id
+    )
+    res.json(sale)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.getSaleById = async (req,res,next)=>{
+  try{
+    const sale = await salesService.getSaleById(req.params.id)
+    res.json(sale)
+  }catch(err){
+    next(err)
+  }
+}
+
+exports.returnSale = async (req,res,next)=>{
+  try{
+    const result = await salesService.returnSale(
+      req.body,
+      req.user.id
+    )
+    res.json(result)
+  }catch(err){
+    next(err)
+  }
+}
+
+
+================================================
+FILE: src/controllers/userController.js
+================================================
+const userService = require('../services/userService')
+
+exports.getUsers = async (req,res,next)=>{
+  try{
+    const users = await userService.getUsers()
+    res.json(users)
+  }catch(err){ next(err) }
+}
+
+exports.createUser = async (req,res,next)=>{
+  try{
+    const user = await userService.createUser(req.body)
+    res.json(user)
+  }catch(err){ next(err) }
+}
+
+exports.updateUser = async (req,res,next)=>{
+  try{
+    const user = await userService.updateUser(req.params.id, req.body)
+    res.json(user)
+  }catch(err){ next(err) }
+}
+
+exports.toggleUser = async (req,res,next)=>{
+  try{
+    const user = await userService.toggleUser(req.params.id)
+    res.json(user)
+  }catch(err){ next(err) }
+}
+
+
+================================================
+FILE: src/middleware/authMiddleware.js
+================================================
+const jwt = require('jsonwebtoken')
+const env = require('../config/env')
+
+module.exports = (req,res,next)=>{
+  const header = req.headers.authorization
+  if(!header) return res.status(401).json({message:"Unauthorized"})
+  const token = header.split(" ")[1]
+  try{
+    const decoded = jwt.verify(token,env.JWT_SECRET)
+    req.user = decoded
+    next()
+  }catch(err){
+    res.status(401).json({message:"Invalid Token"})
+  }
+
+}
+
+
+================================================
+FILE: src/middleware/errorMiddleware.js
+================================================
+module.exports = (err,req,res,next)=>{
+
+  console.error(err)
+
+  res.status(err.status || 500).json({
+    message: err.message || "Internal Server Error"
+  })
+
+}
+
+
+================================================
+FILE: src/middleware/roleMiddleware.js
+================================================
+module.exports = (...roles)=>{
+
+  return (req,res,next)=>{
+
+    if(!roles.includes(req.user.role))
+      return res.status(403).json({message:"Forbidden"})
+
+    next()
+
+  }
+
+}
+
+
+================================================
+FILE: src/repositories/inventoryRepository.js
+================================================
+const db = require('../config/db')
+
+exports.getInventory = async () => {
+  const result = await db.query(`
+    SELECT
+      i.product_unit_id,
+      p.name,
+      pu.unit_name,
+      i.quantity,
+      pu.purchase_rate,
+      (i.quantity * pu.purchase_rate) AS stock_value
+    FROM inventory i
+    JOIN product_units pu
+      ON pu.id = i.product_unit_id
+    JOIN products p
+      ON p.id = pu.product_id
+    ORDER BY p.name
+  `)
+
+  return result.rows
+}
+
+exports.getStockMovements = async () => {
+  const result = await db.query(`
+    SELECT
+      sm.id,
+      p.name,
+      pu.unit_name,
+      sm.quantity,
+      sm.movement_type,
+      sm.created_at
+    FROM stock_movements sm
+    JOIN product_units pu
+      ON pu.id = sm.product_unit_id
+    JOIN products p
+      ON p.id = pu.product_id
+    ORDER BY sm.created_at DESC
+    LIMIT 200
+  `)
+  return result.rows
+}
+
+exports.getLowStock = async () => {
+  const result = await db.query(`
+    SELECT
+      p.name,
+      pu.unit_name,
+      i.quantity,
+      p.reorder_level
+    FROM inventory i
+    JOIN product_units pu
+      ON pu.id=i.product_unit_id
+    JOIN products p
+      ON p.id=pu.product_id
+    WHERE i.quantity <= p.reorder_level
+    ORDER BY i.quantity ASC
+  `)
+  return result.rows
+}
+
+exports.insertAdjustment = async (client,data,userId)=>{
+  const result = await client.query(`
+    INSERT INTO inventory_adjustments
+    (
+      product_unit_id,
+      quantity_change,
+      reason,
+      created_by
+    )
+    VALUES ($1,$2,$3,$4)
+    RETURNING *
+  `,
+  [
+    data.product_unit_id,
+    data.quantity_change,
+    data.reason,
+    userId
+  ])
+  return result.rows[0]
+}
+
+exports.updateInventory = async (client,productUnitId,qty)=>{
+  await client.query(`
+    INSERT INTO inventory(product_unit_id,quantity)
+    VALUES ($1,$2)
+    ON CONFLICT(product_unit_id)
+    DO UPDATE
+    SET quantity = inventory.quantity + $2
+  `,
+  [productUnitId,qty])
+}
+
+exports.insertStockMovement = async (
+  client,
+  productUnitId,
+  qty,
+  type,
+  reference
+)=>{
+  await client.query(`
+    INSERT INTO stock_movements
+    (product_unit_id,quantity,movement_type,reference_id)
+    VALUES ($1,$2,$3,$4)
+  `,
+  [productUnitId,qty,type,reference])
+}
+
+
+================================================
+FILE: src/repositories/partyRepository.js
+================================================
+const db = require('../config/db')
+
+exports.getAll = async () => {
+  const result = await db.query(
+    `
+    SELECT
+      p.id,
+      p.name,
+      p.phone,
+      p.type,
+      p.credit_limit,
+      COALESCE(
+        SUM(CASE WHEN le.entry_type = 'debit'  THEN le.amount ELSE 0 END) -
+        SUM(CASE WHEN le.entry_type = 'credit' THEN le.amount ELSE 0 END),
+        0
+      ) AS outstanding
+    FROM parties p
+    LEFT JOIN ledger_entries le ON le.party_id = p.id
+    GROUP BY p.id, p.name, p.phone, p.type, p.credit_limit
+    ORDER BY p.name
+    `
+  )
+  return result.rows
+}
+
+exports.getById = async (id) => {
+  const result = await db.query(
+    `
+    SELECT *
+    FROM parties
+    WHERE id=$1
+    `,
+    [id]
+  )
+  return result.rows[0]
+}
+
+exports.insertParty = async (data) => {
+  const result = await db.query(
+    `
+    INSERT INTO parties
+    (
+      name,
+      phone,
+      type,
+      credit_limit
+    )
+    VALUES ($1,$2,$3,$4)
+    RETURNING *
+    `,
+    [
+      data.name,
+      data.phone,
+      data.type,
+      data.credit_limit || 0
+    ]
+  )
+  return result.rows[0]
+}
+
+exports.updateParty = async (id, data) => {
+  const result = await db.query(
+    `
+    UPDATE parties
+    SET
+      name=$1,
+      phone=$2,
+      type=$3,
+      credit_limit=$4
+    WHERE id=$5
+    RETURNING *
+    `,
+    [
+      data.name,
+      data.phone,
+      data.type,
+      data.credit_limit,
+      id
+    ]
+  )
+  return result.rows[0]
+}
+
+exports.getLedger = async (partyId) => {
+  const result = await db.query(
+    `
+    SELECT
+      le.entry_type AS type,
+      COALESCE(i.invoice_number, le.description, '') AS reference,
+      le.amount,
+      TO_CHAR(le.created_at, 'YYYY-MM-DD') AS date
+    FROM ledger_entries le
+    LEFT JOIN invoices i ON i.id = le.invoice_id
+    WHERE le.party_id=$1
+    ORDER BY le.created_at DESC
+    `,
+    [partyId]
+  )
+  return result.rows
+}
+
+
+================================================
+FILE: src/repositories/productRepository.js
+================================================
+const db = require('../config/db')
+
+
+exports.getAll = async ()=>{
+  const result = await db.query(
+  `
+  SELECT
+    p.id,
+    p.name,
+    pu.id as unit_id,
+    pu.unit_name,
+    pu.barcode,
+    pu.sales_rate,
+    pu.purchase_rate
+  FROM products p
+  JOIN product_units pu
+  ON pu.product_id=p.id
+  ORDER BY p.name
+  `
+  )
+  return result.rows
+}
+
+exports.search = async (term)=>{
+  const result = await db.query(
+  `
+  SELECT
+    p.id,
+    p.name,
+    pu.id as unit_id,
+    pu.barcode,
+    pu.sales_rate,
+    pu.unit_name
+  FROM products p
+  JOIN product_units pu
+  ON pu.product_id=p.id
+  WHERE p.name ILIKE $1
+  OR pu.barcode=$2
+  LIMIT 20
+  `,
+  [`%${term}%`,term])
+  return result.rows
+}
+
+exports.getByBarcode = async (barcode)=>{
+  const result = await db.query(
+  `
+  SELECT
+    p.id,
+    p.name,
+    pu.id as unit_id,
+    pu.unit_name,
+    pu.sales_rate,
+    pu.barcode
+  FROM product_units pu
+  JOIN products p
+  ON p.id=pu.product_id
+  WHERE pu.barcode=$1
+  `,
+  [barcode])
+  return result.rows[0]
+}
+
+exports.insertProduct = async (data)=>{
+  const result = await db.query(
+  `
+  INSERT INTO products
+  (
+    name,
+    sku,
+    category,
+    reorder_level
+  )
+  VALUES ($1,$2,$3,$4)
+  RETURNING *
+  `,
+  [
+    data.name,
+    data.sku,
+    data.category,
+    data.reorder_level || 0
+  ])
+  return result.rows[0]
+}
+exports.insertUnit = async (productId,unit)=>{
+  await db.query(
+  `
+  INSERT INTO product_units
+  (
+    product_id,
+    unit_name,
+    conversion_factor,
+    barcode,
+    purchase_rate,
+    sales_rate
+  )
+  VALUES ($1,$2,$3,$4,$5,$6)
+  `,
+  [
+    productId,
+    unit.unit_name,
+    unit.conversion_factor,
+    unit.barcode,
+    unit.purchase_rate,
+    unit.sales_rate
+  ])
+}
+
+exports.updateProduct = async (id,data)=>{
+  await db.query(
+  `
+  UPDATE products
+  SET
+    name=$1,
+    sku=$2,
+    category=$3,
+    reorder_level=$4
+  WHERE id=$5
+  `,
+  [
+    data.name,
+    data.sku,
+    data.category,
+    data.reorder_level,
+    id
+  ])
+
+}
+
+exports.deleteProduct = async (id)=>{
+  await db.query(
+  `DELETE FROM products WHERE id=$1`,
+  [id]
+  )
+
+}
+
+
+================================================
+FILE: src/repositories/purchaseRepository.js
+================================================
+exports.insertPurchaseInvoice = async (client,data,userId)=>{
+  const result = await client.query(`
+    INSERT INTO invoices
+    (
+      invoice_number,
+      type,
+      party_id,
+      subtotal,
+      discount,
+      tax,
+      grand_total,
+      created_by
+    )
+    VALUES
+    (
+      generate_invoice_number('purchase'),
+      'purchase',
+      $1,$2,$3,$4,$5,$6
+    )
+    RETURNING id,invoice_number
+  `,
+  [
+    data.party_id,
+    data.subtotal,
+    data.discount,
+    data.tax,
+    data.total,
+    userId
+  ])
+  return result.rows[0]
+}
+
+exports.insertPurchaseItem = async (client,invoiceId,item)=>{
+  await client.query(`
+    INSERT INTO invoice_items
+    (
+      invoice_id,
+      product_unit_id,
+      quantity,
+      rate,
+      total
+    )
+    VALUES ($1,$2,$3,$4,$5)
+  `,
+  [
+    invoiceId,
+    item.product_unit_id,
+    item.quantity,
+    item.rate,
+    item.total
+  ])
+
+}
+
+exports.insertPayment = async (client,invoiceId,payment)=>{
+  await client.query(`
+    INSERT INTO payments
+    (
+      invoice_id,
+      payment_method,
+      amount
+    )
+    VALUES ($1,$2,$3)
+  `,
+  [
+    invoiceId,
+    payment.method,
+    payment.amount
+  ])
+}
+
+
+================================================
+FILE: src/repositories/reportRepository.js
+================================================
+const db = require('../config/db')
+
+/*
+Today's total sales
+Used in dashboard
+*/
+exports.getTodaySales = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COALESCE(SUM(grand_total),0) AS total_sales
+  FROM invoices
+  WHERE type='sale'
+  AND created_at::date = CURRENT_DATE
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Number of transactions today
+*/
+exports.getTodayTransactions = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COUNT(*) AS transactions
+  FROM invoices
+  WHERE type='sale'
+  AND created_at::date = CURRENT_DATE
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Top selling products
+*/
+exports.getTopProducts = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  p.name,
+  SUM(ii.quantity) AS total_sold
+  FROM invoice_items ii
+  JOIN product_units pu
+    ON pu.id = ii.product_unit_id
+  JOIN products p
+    ON p.id = pu.product_id
+  JOIN invoices i
+    ON i.id = ii.invoice_id
+  WHERE i.type='sale'
+  GROUP BY p.name
+  ORDER BY total_sold DESC
+  LIMIT 10
+  `
+  )
+  return result.rows
+}
+
+/*
+Total inventory value
+*/
+exports.getInventoryValue = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COALESCE(SUM(i.quantity * pu.purchase_rate),0) AS stock_value
+  FROM inventory i
+  JOIN product_units pu
+    ON pu.id=i.product_unit_id
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Low stock alerts
+*/
+exports.getLowStock = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  p.name,
+  pu.unit_name,
+  i.quantity,
+  p.reorder_level
+  FROM inventory i
+  JOIN product_units pu
+    ON pu.id=i.product_unit_id
+  JOIN products p
+    ON p.id=pu.product_id
+  WHERE i.quantity < p.reorder_level
+  ORDER BY i.quantity ASC
+  `
+  )
+  return result.rows
+}
+
+/*
+Receivable summary
+Customers with outstanding balance
+*/
+exports.getReceivableSummary = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  p.name,
+  SUM(
+    CASE WHEN le.entry_type='debit'
+    THEN le.amount ELSE 0 END
+  ) -
+  SUM(
+    CASE WHEN le.entry_type='credit'
+    THEN le.amount ELSE 0 END
+  ) AS balance
+  FROM ledger_entries le
+  JOIN parties p
+    ON p.id = le.party_id
+  GROUP BY p.name
+  HAVING
+  SUM(
+    CASE WHEN le.entry_type='debit'
+    THEN le.amount ELSE 0 END
+  ) -
+  SUM(
+    CASE WHEN le.entry_type='credit'
+    THEN le.amount ELSE 0 END
+  ) > 0
+  ORDER BY balance DESC
+  `
+  )
+  return result.rows
+}
+
+/*
+Today's total purchases
+Used in dashboard
+*/
+exports.getTodayPurchase = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COALESCE(SUM(grand_total),0) AS total_purchase
+  FROM invoices
+  WHERE type='purchase'
+  AND created_at::date = CURRENT_DATE
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Payables summary â€“ total outstanding owed to suppliers
+*/
+exports.getPayablesSummary = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COALESCE(
+    SUM(
+      CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
+    ) -
+    SUM(
+      CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
+    ), 0
+  ) AS total_payables
+  FROM ledger_entries le
+  JOIN parties p ON p.id = le.party_id
+  WHERE p.type = 'supplier'
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Total receivables â€“ sum of outstanding balances from customers
+*/
+exports.getTotalReceivables = async () => {
+  const result = await db.query(
+  `
+  SELECT
+  COALESCE(
+    SUM(
+      CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
+    ) -
+    SUM(
+      CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
+    ), 0
+  ) AS total_receivables
+  FROM ledger_entries le
+  JOIN parties p ON p.id = le.party_id
+  WHERE p.type = 'customer'
+  `
+  )
+  return result.rows[0]
+}
+
+/*
+Recent transactions (last 10)
+Used in dashboard
+*/
+exports.getRecentTransactions = async () => {
+  const result = await db.query(
+  `
+  SELECT
+    i.invoice_number AS invoice,
+    i.type,
+    COALESCE(p.name, 'Walk-in') AS party,
+    i.grand_total AS amount
+  FROM invoices i
+  LEFT JOIN parties p ON p.id = i.party_id
+  ORDER BY i.created_at DESC
+  LIMIT 10
+  `
+  )
+  return result.rows
+}
+
+/*
+Sales report by date range
+*/
+exports.getSalesReport = async (from,to) => {
+  const result = await db.query(
+  `
+  SELECT
+    i.invoice_number,
+    i.created_at,
+    p.name AS customer,
+    i.grand_total
+  FROM invoices i
+  LEFT JOIN parties p
+  ON p.id=i.party_id
+  WHERE i.type='sale'
+  AND i.created_at BETWEEN $1 AND $2
+  ORDER BY i.created_at DESC
+  `,
+  [from,to]
+  )
+  return result.rows
+}
+
+
+================================================
+FILE: src/repositories/salesRepository.js
+================================================
+const db = require('../config/db')
+
+exports.insertInvoice = async (client,data,userId)=>{
+  const result = await client.query(
+  `
+  INSERT INTO invoices
+  (invoice_number,type,party_id,subtotal,discount,tax,grand_total,created_by)
+  VALUES
+  (generate_invoice_number('sale'),
+    'sale',$1,$2,$3,$4,$5,$6)
+  RETURNING id,invoice_number
+  `,
+  [
+    data.party_id,
+    data.subtotal,
+    data.discount,
+    data.tax,
+    data.total,
+    userId
+  ])
+  return result.rows[0]
+}
+
+exports.insertInvoiceItem = async (client,invoiceId,item)=>{
+  await client.query(
+  `
+  INSERT INTO invoice_items
+  (invoice_id,product_unit_id,quantity,rate,total)
+  VALUES ($1,$2,$3,$4,$5)
+  `,
+  [
+    invoiceId,
+    item.product_unit_id,
+    item.quantity,
+    item.rate,
+    item.total
+  ])
+}
+
+exports.insertPayment = async (client,invoiceId,payment)=>{
+  await client.query(
+  `
+  INSERT INTO payments
+  (invoice_id,payment_method,amount)
+  VALUES ($1,$2,$3)
+  `,
+  [
+    invoiceId,
+    payment.method,
+    payment.amount
+  ])
+}
+
+exports.getStockForUpdate = async (client,productUnitId)=>{
+  const result = await client.query(
+  `
+  SELECT quantity FROM inventory
+  WHERE product_unit_id=$1
+  FOR UPDATE
+  `,
+  [productUnitId]
+  )
+  return result.rows[0]
+}
+
+exports.reduceInventory = async (client,productUnitId,qty)=>{
+  await client.query(
+  `
+  UPDATE inventory
+  SET quantity = quantity - $1
+  WHERE product_unit_id=$2
+  `,
+  [qty,productUnitId]
+  )
+}
+
+exports.insertStockMovement = async (client,productUnitId,qty,type,ref)=>{
+  await client.query(
+  `
+  INSERT INTO stock_movements
+  (product_unit_id,quantity,movement_type,reference_id)
+  VALUES ($1,$2,$3,$4)
+  `,
+  [productUnitId,qty,type,ref]
+  )
+}
+
+
+================================================
+FILE: src/repositories/userRepository.js
+================================================
+const db = require('../config/db')
+
+exports.findByUsername = async(username)=>{
+
+  const result = await db.query(
+    `SELECT * FROM users WHERE username=$1 AND active=true`,
+    [username]
+  )
+  return result.rows[0]
+
+}
+exports.getAll = async ()=>{
+  const result = await db.query(`SELECT id,username,role,active FROM users`)
+  return result.rows
+}
+
+exports.insert = async (data)=>{
+  const result = await db.query(`
+    INSERT INTO users(username,password_hash,role)
+    VALUES ($1,$2,$3)
+    RETURNING id,username,role
+  `,[data.username,data.password_hash,data.role])
+  return result.rows[0]
+}
+
+exports.toggleActive = async (id)=>{
+  await db.query(`
+    UPDATE users SET active = NOT active WHERE id=$1
+  `,[id])
+}
+
+exports.findById = async (id) => {
+  const result = await db.query(`SELECT * FROM users WHERE id=$1`, [id])
+  return result.rows[0]
+}
+
+exports.updatePassword = async (id, hash) => {
+  await db.query(`UPDATE users SET password_hash=$1 WHERE id=$2`, [hash, id])
+}
+
+exports.update = async (id, data) => {
+  const { role } = data
+  const result = await db.query(
+    `UPDATE users SET role=$1 WHERE id=$2 RETURNING id, username, role, active`,
+    [role, id]
+  )
+  return result.rows[0]
+}
+
+
+================================================
+FILE: src/routes/authRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const controller = require('../controllers/authController')
+const auth = require('../middleware/authMiddleware')
+
+router.post('/login', controller.login)
+router.get('/me', auth, controller.me)
+router.post('/change-password', auth, controller.changePassword)
+
+module.exports = router
+
+
+================================================
+FILE: src/routes/backupRoutes.js
+================================================
+const router = require('express').Router()
+const controller = require('../controllers/backupController')
+const auth = require('../middleware/authMiddleware')
+const role = require('../middleware/roleMiddleware')
+
+router.post('/create', auth, role('owner'), controller.backup)
+router.post('/restore', auth, role('owner'), controller.restore)
+
+module.exports = router
+
+
+================================================
+FILE: src/routes/inventoryRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const inventoryController = require('../controllers/inventoryController')
+const auth = require('../middleware/authMiddleware')
+const role = require('../middleware/roleMiddleware')
+
+router.get('/', auth, inventoryController.getInventory)
+router.get('/movements', auth, inventoryController.getStockMovements)
+router.get('/low-stock', auth, inventoryController.getLowStock)
+router.post(
+  '/adjust',auth,role('owner'),inventoryController.adjustInventory
+)
+module.exports = router
+
+
+================================================
+FILE: src/routes/partyRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const partyController = require('../controllers/partyController')
+const auth = require('../middleware/authMiddleware')
+router.get('/', auth, partyController.getParties)
+router.get('/:id', auth, partyController.getPartyById)
+router.post('/', auth, partyController.createParty)
+router.put('/:id', auth, partyController.updateParty)
+router.get('/:id/ledger', auth, partyController.getPartyLedger)
+module.exports = router
+
+
+================================================
+FILE: src/routes/productRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const productController = require('../controllers/productController')
+const auth = require('../middleware/authMiddleware')
+router.get('/', auth, productController.getProducts)
+router.get('/search', auth, productController.searchProducts)
+router.get('/barcode/:code', auth, productController.getProductByBarcode)
+router.post('/', auth, productController.createProduct)
+router.put('/:id', auth, productController.updateProduct)
+router.delete('/:id', auth, productController.deleteProduct)
+module.exports = router
+
+
+================================================
+FILE: src/routes/purchaseRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const purchaseController =
+require('../controllers/purchaseController')
+
+const auth = require('../middleware/authMiddleware')
+
+router.post('/create',auth,purchaseController.createPurchase)
+router.get('/:id',auth,purchaseController.getPurchaseById)
+
+module.exports = router
+
+
+================================================
+FILE: src/routes/reportRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const reportController = require('../controllers/reportController')
+const auth = require('../middleware/authMiddleware')
+
+router.get('/dashboard', auth, reportController.getDashboard)
+router.get('/sales', auth, reportController.getSalesReport)
+router.get('/top-products', auth, reportController.getTopProducts)
+router.get('/inventory-value', auth, reportController.getInventoryValue)
+router.get('/receivables', auth, reportController.getReceivables)
+router.get('/sales/export',auth,reportController.exportSalesReport)
+module.exports = router
+
+
+================================================
+FILE: src/routes/salesRoutes.js
+================================================
+const express = require('express')
+const router = express.Router()
+
+const salesController = require('../controllers/salesController')
+const auth = require('../middleware/authMiddleware')
+router.post('/create', auth, salesController.createSale)
+router.get('/:id', auth, salesController.getSaleById)
+router.post('/return', auth, salesController.returnSale)
+module.exports = router
+
+
+================================================
+FILE: src/routes/userRoutes.js
+================================================
+const router = require('express').Router()
+const controller = require('../controllers/userController')
+const auth = require('../middleware/authMiddleware')
+const role = require('../middleware/roleMiddleware')
+
+router.get('/', auth, role('owner'), controller.getUsers)
+router.post('/', auth, role('owner'), controller.createUser)
+router.put('/:id', auth, role('owner'), controller.updateUser)
+router.patch('/:id/toggle', auth, role('owner'), controller.toggleUser)
+
+module.exports = router
+
+
+================================================
+FILE: src/services/authService.js
+================================================
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
+const userRepo = require('../repositories/userRepository')
+const env = require('../config/env')
+
+exports.login = async(username,password)=>{
+  const user = await userRepo.findByUsername(username)
+  if(!user) throw new Error("Invalid credentials")
+  const valid = await bcrypt.compare(password,user.password_hash)
+  if(!valid) throw new Error("Invalid credentials")
+  const token = jwt.sign(
+    {id:user.id,role:user.role},
+    env.JWT_SECRET,
+    {expiresIn:"12h"}
+  )
+  return {token, user: {id: user.id, name: user.username, role: user.role}}
+
+}
+exports.changePassword = async (userId,current,newPass)=>{
+  const user = await userRepo.findById(userId)
+
+  const valid = await bcrypt.compare(current,user.password_hash)
+  if(!valid) throw new Error("Wrong password")
+
+  const hash = await bcrypt.hash(newPass,10)
+
+  await userRepo.updatePassword(userId,hash)
+
+  return {message:"Password updated"}
+}
+
+
+================================================
+FILE: src/services/inventoryService.js
+================================================
+const db = require('../config/db')
+const inventoryRepo = require('../repositories/inventoryRepository')
+
+exports.getInventory = async ()=>{
+  return inventoryRepo.getInventory()
+}
+
+exports.getStockMovements = async ()=>{
+  return inventoryRepo.getStockMovements()
+}
+
+exports.getLowStock = async ()=>{
+  return inventoryRepo.getLowStock()
+}
+
+exports.adjustInventory = async (data,userId)=>{
+  const client = await db.connect()
+  try{
+    await client.query("BEGIN")
+    const adjustment =
+      await inventoryRepo.insertAdjustment(
+        client,
+        data,
+        userId
+      )
+    await inventoryRepo.updateInventory(
+      client,
+      data.product_unit_id,
+      data.quantity_change
+    )
+    await inventoryRepo.insertStockMovement(
+      client,
+      data.product_unit_id,
+      data.quantity_change,
+      'adjustment',
+      adjustment.id
+    )
+    await client.query("COMMIT")
+    return adjustment
+  }catch(err){
+    await client.query("ROLLBACK")
+    throw err
+  }finally{
+    client.release()
+  }
+}
+
+
+================================================
+FILE: src/services/partyService.js
+================================================
+const partyRepo = require('../repositories/partyRepository')
+
+exports.getParties = async () => {
+  return partyRepo.getAll()
+}
+
+exports.getPartyById = async (id) => {
+  return partyRepo.getById(id)
+}
+
+exports.createParty = async (data) => {
+  return partyRepo.insertParty(data)
+}
+
+exports.updateParty = async (id, data) => {
+  return partyRepo.updateParty(id, data)
+}
+
+exports.getPartyLedger = async (partyId) => {
+  return partyRepo.getLedger(partyId)
+}
+
+
+================================================
+FILE: src/services/productService.js
+================================================
+const productRepo = require('../repositories/productRepository')
+
+exports.getProducts = async ()=>{
+  return productRepo.getAll()
+}
+
+exports.searchProducts = async (term)=>{
+  return productRepo.search(term)
+}
+
+exports.getProductByBarcode = async (barcode)=>{
+  return productRepo.getByBarcode(barcode)
+}
+
+
+
+exports.createProduct = async (data)=>{
+  const product = await productRepo.insertProduct(data)
+  for(const unit of data.units){
+    await productRepo.insertUnit(product.id,unit)
+  }
+  return product
+}
+
+
+
+exports.updateProduct = async (id,data)=>{
+  await productRepo.updateProduct(id,data)
+  return {message:"Product updated"}
+}
+
+exports.deleteProduct = async (id)=>{
+  return productRepo.deleteProduct(id)
+}
+
+
+================================================
+FILE: src/services/purchaseService.js
+================================================
+const db = require('../config/db')
+const purchaseRepo = require('../repositories/purchaseRepository')
+const inventoryRepo = require('../repositories/inventoryRepository')
+
+exports.createPurchase = async (data,userId)=>{
+  const client = await db.connect()
+  try{
+    await client.query("BEGIN")
+    const invoice =
+      await purchaseRepo.insertPurchaseInvoice(
+        client,
+        data,
+        userId
+      )
+    const invoiceId = invoice.id
+    for(const item of data.items){
+      await purchaseRepo.insertPurchaseItem(
+        client,
+        invoiceId,
+        item
+      )
+      await inventoryRepo.updateInventory(
+        client,
+        item.product_unit_id,
+        item.quantity
+      )
+      await inventoryRepo.insertStockMovement(
+        client,
+        item.product_unit_id,
+        item.quantity,
+        'purchase',
+        invoiceId
+      )
+    }
+    for(const pay of data.payments){
+      await purchaseRepo.insertPayment(
+        client,
+        invoiceId,
+        pay
+      )
+    }
+    await client.query("COMMIT")
+    return invoice
+  }catch(err){
+    await client.query("ROLLBACK")
+    throw err
+  }finally{
+    client.release()
+  }
+}
+exports.getPurchaseById = async(id)=>{
+  return purchaseRepo.getPurchaseById(id)
+}
+
+
+================================================
+FILE: src/services/reportService.js
+================================================
+const reportRepo = require('../repositories/reportRepository')
+/*
+Dashboard summary
+Used by POS home screen
+*/
+exports.getDashboard = async () => {
+  const [
+    todaySales,
+    todayPurchase,
+    lowStock,
+    receivablesRow,
+    payablesRow,
+    recent
+  ] = await Promise.all([
+    reportRepo.getTodaySales(),
+    reportRepo.getTodayPurchase(),
+    reportRepo.getLowStock(),
+    reportRepo.getTotalReceivables(),
+    reportRepo.getPayablesSummary(),
+    reportRepo.getRecentTransactions()
+  ])
+  return {
+    today_sales: Number(todaySales.total_sales) || 0,
+    today_purchase: Number(todayPurchase.total_purchase) || 0,
+    receivables: Number(receivablesRow.total_receivables) || 0,
+    payables: Number(payablesRow.total_payables) || 0,
+    low_stock: lowStock,
+    recent
+  }
+}
+
+exports.getSalesReport = async (from, to) => {
+  if (!from || !to) {
+    throw new Error("Date range required")
+  }
+  return reportRepo.getSalesReport(from, to)
+}
+
+exports.getTopProducts = async () => {
+  return reportRepo.getTopProducts()
+}
+
+exports.getInventoryValue = async () => {
+  return reportRepo.getInventoryValue()
+}
+
+exports.getReceivables = async () => {
+  return reportRepo.getReceivableSummary()
+}
+
+exports.getLowStock = async () => {
+  return reportRepo.getLowStock()
+}
+
+
+================================================
+FILE: src/services/salesService.js
+================================================
+const db = require('../config/db')
+const salesRepo = require('../repositories/salesRepository')
+
+exports.createSale = async (data,userId)=>{
+  const client = await db.connect()
+  try{
+    await client.query("BEGIN")
+    const invoice = await salesRepo.insertInvoice(
+      client,
+      data,
+      userId
+    )
+    const invoiceId = invoice.id
+    for(const item of data.items){
+      const stock = await salesRepo.getStockForUpdate(
+        client,
+        item.product_unit_id
+      )
+      if(!stock || stock.quantity < item.quantity){
+        throw new Error("Insufficient stock")
+      }
+      await salesRepo.insertInvoiceItem(
+        client,
+        invoiceId,
+        item
+      )
+      await salesRepo.reduceInventory(
+        client,
+        item.product_unit_id,
+        item.quantity
+      )
+      await salesRepo.insertStockMovement(
+        client,
+        item.product_unit_id,
+        -item.quantity,
+        'sale',
+        invoiceId
+      )
+    }
+    for(const pay of data.payments){
+      await salesRepo.insertPayment(
+        client,
+        invoiceId,
+        pay
+      )
+    }
+    await client.query("COMMIT")
+    return invoice
+  }catch(err){
+    await client.query("ROLLBACK")
+    throw err
+  }finally{
+    client.release()
+  }
+}
+
+
+================================================
+FILE: src/services/userService.js
+================================================
+const userRepo = require('../repositories/userRepository')
+const bcrypt = require('bcrypt')
+
+exports.getUsers = () => userRepo.getAll()
+
+exports.createUser = async (data)=>{
+  const hash = await bcrypt.hash(data.password,10)
+  return userRepo.insert({...data, password_hash: hash})
+}
+
+exports.updateUser = (id,data)=> userRepo.update(id,data)
+
+exports.toggleUser = (id)=> userRepo.toggleActive(id)
+
+
+================================================
+FILE: src/utils/ApiError.js
+================================================
+class ApiError extends Error {
+
+  constructor(status,message){
+    super(message)
+    this.status = status
+  }
+
+}
+
+module.exports = ApiError
+
+
+================================================
+FILE: src/utils/logger.js
+================================================
+module.exports = {
+  info: (msg)=> console.log(msg),
+  error: (msg)=> console.error(msg)
+}
+

@@ -167,7 +167,7 @@ export default function Sales() {
             payments,
           }));
 
-      setSuccessMsg(`✓ ${res.invoice_number ?? "Bill recorded"}`);
+      setSuccessMsg(`✓ ${res?.invoice_number ?? "Bill recorded"}`);
       setCart([]);
       setCashInput("");
       setUpiInput("");

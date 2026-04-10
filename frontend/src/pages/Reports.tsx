@@ -22,7 +22,7 @@ export default function Reports() {
     setError("");
     try {
       if (reportType === "sales") {
-        const data = await ReportAPI.sales(startDate, endDate);
+        const data = await ReportAPI.sales({ from: startDate, to: endDate });
         setSalesData(data);
       } else if (reportType === "inventory") {
         const data = await InventoryAPI.getAll();

@@ -1,253 +1,274 @@
 import axios, { AxiosError } from "axios"
 
-/* =========================================================
-   BASE CONFIG (ENV SAFE)
-========================================================= */
-const BASE_URL = import.meta.env.VITE_API_URL || "/api"
+// =====================================
+// BASE URL (AUTO SWITCH DEV / PROD)
+// =====================================
+const BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
 
-const api = axios.create({
+// =====================================
+// AXIOS INSTANCE
+// =====================================
+const API = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 10000, // 10s timeout
+  headers: {
+    "Content-Type": "application/json",
+  },
 })
 
-/* =========================================================
-   INTERCEPTORS
-========================================================= */
+// =====================================
+// REQUEST INTERCEPTOR (TOKEN)
+// =====================================
+API.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token")
 
-// Attach JWT
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token")
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
 
-// Global error handling
-api.interceptors.response.use(
-  (res) => res,
-  (err: AxiosError<any>) => {
-    const status = err.response?.status
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
+// =====================================
+// RESPONSE INTERCEPTOR (ERROR HANDLING)
+// =====================================
+API.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<any>) => {
+    const status = error.response?.status
+    const data = error.response?.data
+
+    console.error("🚨 API ERROR:", {
+      url: error.config?.url,
+      method: error.config?.method,
+      status,
+      message: data || error.message,
+    })
+
+    // 🔒 Handle unauthorized (auto logout)
     if (status === 401) {
       localStorage.removeItem("token")
       window.location.href = "/login"
     }
 
-    console.error("[API ERROR]", {
-      url: err.config?.url,
-      method: err.config?.method,
-      data: err.response?.data,
-      message: err.message,
-    })
-
-    return Promise.reject(err)
+    return Promise.reject(error)
   }
 )
 
-/* =========================================================
-   HELPER (REMOVE .data REPETITION)
-========================================================= */
-const unwrap = <T>(promise: Promise<any>): Promise<T> =>
-  promise.then((res) => res.data)
+export default API
 
-/* =========================================================
-   TYPES
-========================================================= */
+// =====================================
+// TYPES
+// =====================================
+export interface DashboardData {
+  today_sales: number
+  today_purchase: number
+  receivables: number
+  payables: number
+  low_stock: Array<{ name: string; quantity: number }>
+  recent: Array<{ invoice: string; type: "sale" | "purchase"; party: string; amount: number }>
+}
 
-export interface AuthUser {
+export interface ProductSearchItem {
   id: number
-  username: string
-  role: string
+  name: string
+  unit_id: number
+  unit_name: string
+  sales_rate: number
+  barcode: string
+}
+
+export interface Party {
+  id: number
+  name: string
+  type: "customer" | "supplier"
+  phone: string
+  outstanding: number
+  credit_limit?: number
+}
+
+export interface SalesReportItem {
+  date: string
+  total_sales: number
+  total_returns: number
+  net_sales: number
+  transactions: number
+  avg_bill: number
+}
+
+export interface InventoryItem {
+  product_unit_id: number
+  name: string
+  unit_name: string
+  quantity: number
+  purchase_rate: number
+  stock_value: number
 }
 
 export interface InventoryMovement {
   id: number
-  name: string
-  unit_name: string
+  type: string
   quantity: number
-  movement_type: string
-  created_at: string
+  unit_name: string
+  reference: string
+  date: string
 }
 
-/* =========================================================
-   AUTH API
-========================================================= */
-
+// =====================================
+// AUTH API
+// =====================================
 export const AuthAPI = {
   login: (data: { username: string; password: string }) =>
-    unwrap<{ token: string; id: string; role: string }>(
-      api.post("/auth/login", data)
-    ),
+    API.post("/api/auth/login", data).then((res) => res.data),
+
+  register: (data: any) =>
+    API.post("/api/auth/register", data).then((res) => res.data),
 
   me: () =>
-    unwrap<AuthUser>(api.get("/auth/me")),
+    API.get("/api/auth/me").then((res) => res.data),
 
-  changePassword: (data: {
-    current: string
-    newPassword: string
-  }) =>
-    unwrap(api.post("/auth/change-password", data)),
+  changePassword: (data: { current: string; newPassword: string }) =>
+    API.post("/api/auth/change-password", data).then((res) => res.data),
 }
 
-/* =========================================================
-   USERS API (SETTINGS PAGE)
-========================================================= */
-
-export const UserAPI = {
-  getUsers: () =>
-    unwrap<any[]>(api.get("/users")),
-
-  create: (data: {
-    username: string
-    password: string
-    role: string
-  }) =>
-    unwrap(api.post("/users", data)),
-
-  toggle: (id: number) =>
-    unwrap(api.patch(`/users/${id}/toggle`)),
-
-  update: (id: number, data: { role: string }) =>
-    unwrap(api.put(`/users/${id}`, data)),
-}
-
-/* =========================================================
-   PRODUCTS
-========================================================= */
-
+// =====================================
+// PRODUCT API
+// =====================================
 export const ProductAPI = {
-  getAll: () =>
-    unwrap(api.get("/products")),
+  getAll: () => API.get("/api/products").then((res) => res.data),
 
   search: (q: string) =>
-    unwrap(api.get(`/products/search?q=${encodeURIComponent(q)}`)),
+    API.get(`/api/products/search?q=${q}`).then((res) => res.data),
 
-  barcode: (code: string) =>
-    unwrap(api.get(`/products/barcode/${code}`)),
+  getByBarcode: (code: string) =>
+    API.get(`/api/products/barcode/${code}`).then((res) => res.data),
 
   create: (data: any) =>
-    unwrap(api.post("/products", data)),
+    API.post("/api/products", data).then((res) => res.data),
 
   update: (id: number, data: any) =>
-    unwrap(api.put(`/products/${id}`, data)),
+    API.put(`/api/products/${id}`, data).then((res) => res.data),
 
   delete: (id: number) =>
-    unwrap(api.delete(`/products/${id}`)),
+    API.delete(`/api/products/${id}`).then((res) => res.data),
 }
 
-/* =========================================================
-   INVENTORY
-========================================================= */
-
-export const InventoryAPI = {
-  getAll: () =>
-    unwrap(api.get("/inventory")),
-
-  movements: () =>
-    unwrap(api.get("/inventory/movements")),
-
-  lowStock: () =>
-    unwrap(api.get("/inventory/low-stock")),
-
-  adjust: (data: {
-    product_unit_id: number
-    quantity_change: number
-    reason: string
-  }) =>
-    unwrap(api.post("/inventory/adjust", data)),
-}
-
-/* =========================================================
-   SALES
-========================================================= */
-
+// =====================================
+// SALES API
+// =====================================
 export const SalesAPI = {
   create: (data: any) =>
-    unwrap(api.post("/sales/create", data)),
+    API.post("/api/sales/create", data).then((res) => res.data),
 
   getById: (id: number) =>
-    unwrap(api.get(`/sales/${id}`)),
+    API.get(`/api/sales/${id}`).then((res) => res.data),
 
   returnSale: (data: any) =>
-    unwrap(api.post("/sales/return", data)),
+    API.post("/api/sales/return", data).then((res) => res.data),
 }
 
-/* =========================================================
-   PURCHASE
-========================================================= */
-
+// =====================================
+// PURCHASE API
+// =====================================
 export const PurchaseAPI = {
   create: (data: any) =>
-    unwrap(api.post("/purchase/create", data)),
+    API.post("/api/purchase/create", data).then((res) => res.data),
 
   getById: (id: number) =>
-    unwrap(api.get(`/purchase/${id}`)),
+    API.get(`/api/purchase/${id}`).then((res) => res.data),
 }
 
-/* =========================================================
-   PARTIES
-========================================================= */
-
-export const PartyAPI = {
+// =====================================
+// INVENTORY API
+// =====================================
+export const InventoryAPI = {
   getAll: () =>
-    unwrap(api.get("/parties")),
+    API.get("/api/inventory").then((res) => res.data),
 
-  ledger: (id: number) =>
-    unwrap(api.get(`/parties/${id}/ledger`)),
+  getMovements: () =>
+    API.get("/api/inventory/movements").then((res) => res.data),
 
-  create: (data: any) =>
-    unwrap(api.post("/parties", data)),
+  getLowStock: () =>
+    API.get("/api/inventory/low-stock").then((res) => res.data),
 
-  update: (id: number, data: any) =>
-    unwrap(api.put(`/parties/${id}`, data)),
-
-  delete: (id: number) =>
-    unwrap(api.delete(`/parties/${id}`)),
+  adjust: (data: any) =>
+    API.post("/api/inventory/adjust", data).then((res) => res.data),
 }
 
-/* =========================================================
-   REPORTS
-========================================================= */
-
+// =====================================
+// REPORT API
+// =====================================
 export const ReportAPI = {
   dashboard: () =>
-    unwrap(api.get("/reports/dashboard")),
+    API.get("/api/reports/dashboard").then((res) => res.data),
 
-  sales: (from: string, to: string) =>
-    unwrap(api.get(`/reports/sales?from=${from}&to=${to}`)),
+  sales: (params: { from: string; to: string } | any) =>
+    API.get("/api/reports/sales", { params }).then((res) => res.data),
 
-  inventoryValue: () =>
-    unwrap(api.get("/reports/inventory-value")),
-
-  receivables: () =>
-    unwrap(api.get("/reports/receivables")),
+  inventory: () =>
+    API.get("/api/reports/inventory").then((res) => res.data),
 }
 
-/* =========================================================
-   BACKUP & RESTORE
-========================================================= */
+// =====================================
+// PARTY API
+// =====================================
+export const PartyAPI = {
+  getAll: () => API.get("/api/parties").then((res) => res.data),
 
+  getById: (id: number) =>
+    API.get(`/api/parties/${id}`).then((res) => res.data),
+
+  create: (data: any) =>
+    API.post("/api/parties", data).then((res) => res.data),
+
+  update: (id: number, data: any) =>
+    API.put(`/api/parties/${id}`, data).then((res) => res.data),
+
+  delete: (id: number) =>
+    API.delete(`/api/parties/${id}`).then((res) => res.data),
+
+  ledger: (partyId: number) =>
+    API.get(`/api/parties/${partyId}/ledger`).then((res) => res.data),
+}
+
+// =====================================
+// USER API
+// =====================================
+export const UserAPI = {
+  getAll: () => API.get("/api/users").then((res) => res.data),
+
+  create: (data: any) =>
+    API.post("/api/users", data).then((res) => res.data),
+
+  update: (id: number, data: any) =>
+    API.put(`/api/users/${id}`, data).then((res) => res.data),
+
+  toggle: (id: number) =>
+    API.patch(`/api/users/${id}/toggle`).then((res) => res.data),
+
+  delete: (id: number) =>
+    API.delete(`/api/users/${id}`).then((res) => res.data),
+}
+
+// =====================================
+// BACKUP API
+// =====================================
 export const BackupAPI = {
-  create: () =>
-    unwrap(api.post("/backup/create")),
+  createBackup: () =>
+    API.post("/api/backup/create").then((res) => res.data),
 
-  restore: async (file: File) => {
-    const form = new FormData()
-    form.append("file", file)
+  restoreBackup: (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
 
-    return unwrap(
-      api.post("/backup/restore", form, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      })
-    )
+    return API.post("/api/backup/restore", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }).then((res) => res.data)
   },
 }
-
-/* =========================================================
-   EXPORT CLIENT
-========================================================= */
-
-export default api
