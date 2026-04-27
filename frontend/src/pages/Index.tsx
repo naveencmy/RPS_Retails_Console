@@ -1,4 +1,4 @@
-import { DemoResponse } from "@shared/api";
+import { DemoResponse } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 export default function Index() {

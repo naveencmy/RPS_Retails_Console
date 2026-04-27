@@ -20,12 +20,13 @@ interface SystemUser {
   active: boolean;
 }
 
-const ROLES = ["owner", "manager", "worker"] as const;
+const ROLES = ["owner", "manager", "worker","cashier"] as const;
 
 const roleBadgeClass: Record<string, string> = {
   owner: "bg-[hsl(var(--error))] text-white",
   manager: "bg-[hsl(var(--warning))] text-black",
   worker: "bg-[hsl(var(--info))] text-white",
+  cashier: "bg-[hsl(var(--success))] text-white",
 };
 
 export default function Settings() {

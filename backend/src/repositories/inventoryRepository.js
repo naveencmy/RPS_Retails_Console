@@ -1,19 +1,23 @@
 const db = require('../config/db')
 
+/*
+SOURCE OF TRUTH = stock_movements
+*/
+
 exports.getInventory = async () => {
   const result = await db.query(`
     SELECT
-      i.product_unit_id,
+      pu.id AS product_unit_id,
       p.name,
       pu.unit_name,
-      i.quantity,
+      COALESCE(SUM(sm.quantity), 0) AS quantity,
       pu.purchase_rate,
-      (i.quantity * pu.purchase_rate) AS stock_value
-    FROM inventory i
-    JOIN product_units pu
-      ON pu.id = i.product_unit_id
-    JOIN products p
-      ON p.id = pu.product_id
+      COALESCE(SUM(sm.quantity), 0) * pu.purchase_rate AS stock_value
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN stock_movements sm
+      ON sm.product_unit_id = pu.id
+    GROUP BY pu.id, p.name, pu.unit_name, pu.purchase_rate
     ORDER BY p.name
   `)
 
@@ -28,6 +32,7 @@ exports.getStockMovements = async () => {
       pu.unit_name,
       sm.quantity,
       sm.movement_type,
+      sm.reference_id,
       sm.created_at
     FROM stock_movements sm
     JOIN product_units pu
@@ -37,70 +42,47 @@ exports.getStockMovements = async () => {
     ORDER BY sm.created_at DESC
     LIMIT 200
   `)
+
   return result.rows
 }
 
+/*
+KEEP FUNCTION — but FIX SOURCE
+*/
 exports.getLowStock = async () => {
   const result = await db.query(`
     SELECT
       p.name,
       pu.unit_name,
-      i.quantity,
+      COALESCE(SUM(sm.quantity),0) AS quantity,
       p.reorder_level
-    FROM inventory i
-    JOIN product_units pu
-      ON pu.id=i.product_unit_id
-    JOIN products p
-      ON p.id=pu.product_id
-    WHERE i.quantity <= p.reorder_level
-    ORDER BY i.quantity ASC
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN stock_movements sm
+      ON sm.product_unit_id = pu.id
+    GROUP BY p.name, pu.unit_name, p.reorder_level
+    HAVING COALESCE(SUM(sm.quantity),0) <= p.reorder_level
+    ORDER BY quantity ASC
   `)
+
   return result.rows
 }
 
-exports.insertAdjustment = async (client,data,userId)=>{
-  const result = await client.query(`
-    INSERT INTO inventory_adjustments
-    (
-      product_unit_id,
-      quantity_change,
-      reason,
-      created_by
-    )
-    VALUES ($1,$2,$3,$4)
-    RETURNING *
-  `,
-  [
-    data.product_unit_id,
-    data.quantity_change,
-    data.reason,
-    userId
-  ])
-  return result.rows[0]
-}
-
-exports.updateInventory = async (client,productUnitId,qty)=>{
-  await client.query(`
-    INSERT INTO inventory(product_unit_id,quantity)
-    VALUES ($1,$2)
-    ON CONFLICT(product_unit_id)
-    DO UPDATE
-    SET quantity = inventory.quantity + $2
-  `,
-  [productUnitId,qty])
-}
-
+/*
+ONLY VALID WRITE OPERATION
+*/
 exports.insertStockMovement = async (
   client,
   productUnitId,
   qty,
   type,
-  reference
-)=>{
+  reference,
+  userId
+) => {
   await client.query(`
     INSERT INTO stock_movements
-    (product_unit_id,quantity,movement_type,reference_id)
-    VALUES ($1,$2,$3,$4)
+    (product_unit_id, quantity, movement_type, reference_id, created_by)
+    VALUES ($1,$2,$3,$4,$5)
   `,
-  [productUnitId,qty,type,reference])
+  [productUnitId, qty, type, reference, userId])
 }

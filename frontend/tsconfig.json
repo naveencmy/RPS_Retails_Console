@@ -26,7 +26,7 @@
     "strictNullChecks": false,
 
     /* Path mapping */
-    "baseUrl": ".",
+    "baseUrl": "http://localhost:5000",
     "paths": {
       "@/*": ["./src/*"]
     }

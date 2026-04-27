@@ -21,6 +21,27 @@ exports.getSaleById = async (req,res,next)=>{
   }
 }
 
+
+exports.saveQuickSale = async (req,res,next)=>{
+  try{
+    const data = await salesService.saveQuickSale(req.user.id, req.body)
+    res.json(data)
+  }catch(err){ next(err) }
+}
+
+exports.getQuickSales = async (req,res,next)=>{
+  try{
+    const data = await salesService.getQuickSales(req.user.id)
+    res.json(data)
+  }catch(err){ next(err) }
+}
+
+exports.deleteQuickSale = async (req,res,next)=>{
+  try{
+    await salesService.deleteQuickSale(req.params.id)
+    res.json({message:"Deleted"})
+  }catch(err){ next(err) }
+}
 exports.returnSale = async (req,res,next)=>{
   try{
     const result = await salesService.returnSale(

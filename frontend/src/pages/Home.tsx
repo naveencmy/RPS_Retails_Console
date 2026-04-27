@@ -110,7 +110,7 @@ export default function Home() {
                     <img
                       src="/assets/icon-pos-register.svg"
                       alt="POS Register"
-                      className="w-8 h-8 mt-1 invert brightness-0 bg-[#002a51] p-1 rounded-sm"
+                      className="w-10 h-10 mt-1 bg-[#e5e7eb] brightness-0 p-2 rounded-sm"
                     />
                     <div>
                       <div

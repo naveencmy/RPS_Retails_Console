@@ -185,18 +185,7 @@ export default function Sales() {
   return (
     <Layout>
       <div className="space-y-4 pb-96">
-        <div className="text-xs text-muted-foreground">
-          Logged in as{" "}
-          <span className="font-semibold text-foreground">{currentUser?.name ?? "Owner"}</span>
-          <span className="ml-2 rounded-full border border-border px-2 py-0.5 uppercase tracking-[0.25em]">
-            {userRole}
-          </span>
-          {successMsg && (
-            <span className={`ml-4 font-semibold ${successMsg.startsWith("✓") ? "text-[hsl(var(--success))]" : "text-[hsl(var(--error))]"}`}>
-              {successMsg}
-            </span>
-          )}
-        </div>
+        
 
         {/* Header */}
         <div className="bg-card border border-border rounded-md p-4 flex gap-6 items-start">

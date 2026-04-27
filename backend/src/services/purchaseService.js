@@ -1,53 +1,60 @@
 const db = require('../config/db')
 const purchaseRepo = require('../repositories/purchaseRepository')
-const inventoryRepo = require('../repositories/inventoryRepository')
 
-exports.createPurchase = async (data,userId)=>{
+exports.createPurchase = async (data, userId) => {
   const client = await db.connect()
-  try{
+
+  try {
     await client.query("BEGIN")
-    const invoice =
-      await purchaseRepo.insertPurchaseInvoice(
-        client,
-        data,
-        userId
-      )
+
+    // 🔥 STEP 1: CREATE INVOICE
+    const invoice = await purchaseRepo.insertPurchaseInvoice(
+      client,
+      data,
+      userId
+    )
+
     const invoiceId = invoice.id
-    for(const item of data.items){
+
+    // 🔥 STEP 2: INSERT ITEMS + STOCK IN
+    for (const item of data.items) {
       await purchaseRepo.insertPurchaseItem(
         client,
         invoiceId,
         item
       )
-      await inventoryRepo.updateInventory(
+
+      await purchaseRepo.insertStockMovement(
         client,
         item.product_unit_id,
-        item.quantity
-      )
-      await inventoryRepo.insertStockMovement(
-        client,
-        item.product_unit_id,
-        item.quantity,
+        item.quantity,        // POSITIVE
         'purchase',
-        invoiceId
+        invoiceId,
+        userId
       )
     }
-    for(const pay of data.payments){
+
+    // 🔥 STEP 3: PAYMENTS
+    for (const pay of data.payments || []) {
       await purchaseRepo.insertPayment(
         client,
         invoiceId,
         pay
       )
     }
+
     await client.query("COMMIT")
+
     return invoice
-  }catch(err){
+
+  } catch (err) {
     await client.query("ROLLBACK")
     throw err
-  }finally{
+  } finally {
     client.release()
   }
 }
-exports.getPurchaseById = async(id)=>{
+
+exports.getPurchaseById = async (id) => {
   return purchaseRepo.getPurchaseById(id)
 }

@@ -156,3 +156,24 @@
     @apply text-sm text-muted-foreground mt-1;
   }
 }
+@layer components {
+.drawer-input {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #fff;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.drawer-input::placeholder {
+  color: #71717a;
+}
+
+.drawer-input:focus {
+  outline: none;
+  border-color: #006fee;
+  box-shadow: 0 0 0 1px #006fee;
+}
+}

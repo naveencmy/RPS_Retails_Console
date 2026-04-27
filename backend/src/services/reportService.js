@@ -1,8 +1,5 @@
 const reportRepo = require('../repositories/reportRepository')
-/*
-Dashboard summary
-Used by POS home screen
-*/
+
 exports.getDashboard = async () => {
   const [
     todaySales,
@@ -19,6 +16,7 @@ exports.getDashboard = async () => {
     reportRepo.getPayablesSummary(),
     reportRepo.getRecentTransactions()
   ])
+
   return {
     today_sales: Number(todaySales.total_sales) || 0,
     today_purchase: Number(todayPurchase.total_purchase) || 0,
@@ -36,18 +34,7 @@ exports.getSalesReport = async (from, to) => {
   return reportRepo.getSalesReport(from, to)
 }
 
-exports.getTopProducts = async () => {
-  return reportRepo.getTopProducts()
-}
-
-exports.getInventoryValue = async () => {
-  return reportRepo.getInventoryValue()
-}
-
-exports.getReceivables = async () => {
-  return reportRepo.getReceivableSummary()
-}
-
-exports.getLowStock = async () => {
-  return reportRepo.getLowStock()
-}
+exports.getTopProducts = () => reportRepo.getTopProducts()
+exports.getInventoryValue = () => reportRepo.getInventoryValue()
+exports.getReceivables = () => reportRepo.getReceivableSummary()
+exports.getLowStock = () => reportRepo.getLowStock()

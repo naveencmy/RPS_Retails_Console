@@ -1,4 +1,6 @@
-exports.insertPurchaseInvoice = async (client,data,userId)=>{
+const db = require('../config/db')
+
+exports.insertPurchaseInvoice = async (client, data, userId) => {
   const result = await client.query(`
     INSERT INTO invoices
     (
@@ -27,10 +29,11 @@ exports.insertPurchaseInvoice = async (client,data,userId)=>{
     data.total,
     userId
   ])
+
   return result.rows[0]
 }
 
-exports.insertPurchaseItem = async (client,invoiceId,item)=>{
+exports.insertPurchaseItem = async (client, invoiceId, item) => {
   await client.query(`
     INSERT INTO invoice_items
     (
@@ -49,10 +52,9 @@ exports.insertPurchaseItem = async (client,invoiceId,item)=>{
     item.rate,
     item.total
   ])
-
 }
 
-exports.insertPayment = async (client,invoiceId,payment)=>{
+exports.insertPayment = async (client, invoiceId, payment) => {
   await client.query(`
     INSERT INTO payments
     (
@@ -67,4 +69,34 @@ exports.insertPayment = async (client,invoiceId,payment)=>{
     payment.method,
     payment.amount
   ])
+}
+
+/*
+🔥 ONLY STOCK WRITE
+*/
+exports.insertStockMovement = async (
+  client,
+  productUnitId,
+  qty,
+  type,
+  reference,
+  userId
+) => {
+  await client.query(`
+    INSERT INTO stock_movements
+    (product_unit_id, quantity, movement_type, reference_id, created_by)
+    VALUES ($1,$2,$3,$4,$5)
+  `,
+  [productUnitId, qty, type, reference, userId])
+}
+
+/*
+🔥 MISSING FUNCTION (you forgot this)
+*/
+exports.getPurchaseById = async (id) => {
+  const result = await db.query(`
+    SELECT * FROM invoices WHERE id=$1 AND type='purchase'
+  `, [id])
+
+  return result.rows[0]
 }

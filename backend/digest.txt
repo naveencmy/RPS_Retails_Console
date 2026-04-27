@@ -110,15 +110,15 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-app.use('/auth', authRoutes)
-app.use('/products', productRoutes)
-app.use('/sales', salesRoutes)
-app.use('/purchase', purchaseRoutes)
-app.use('/inventory', inventoryRoutes)
-app.use('/parties', partyRoutes)
-app.use('/reports', reportRoutes)
-app.use('/users', userRoutes)
-app.use('/backup', backupRoutes)
+app.use('/api/auth', authRoutes)
+app.use('/api/products', productRoutes)
+app.use('/api/sales', salesRoutes)
+app.use('/api/purchase', purchaseRoutes)
+app.use('/api/inventory', inventoryRoutes)
+app.use('/api/parties', partyRoutes)
+app.use('/api/reports', reportRoutes)
+app.use('/api/users', userRoutes)
+app.use('/api/backup', backupRoutes)
 
 app.use(errorMiddleware)
 app.get('/', (req,res)=>{
@@ -126,9 +126,6 @@ app.get('/', (req,res)=>{
     service: "POS Backend",
     status: `running on ${PORT}`
   })
-})
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' })
 })
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET missing")
@@ -139,14 +136,15 @@ module.exports = app
 ================================================
 FILE: src/server.js
 ================================================
+require('dotenv').config()
+
 const app = require('./app')
 const env = require('./config/env')
 const logger= require('./utils/logger')
-logger.info(`POS Backend running on port ${env.PORT}`)
+
 app.listen(env.PORT, () => {
   console.log(`POS Backend running on port ${env.PORT}`)
 })
-
 
 
 ================================================
@@ -154,16 +152,31 @@ FILE: src/config/db.js
 ================================================
 const { Pool } = require('pg')
 
+const isProduction = process.env.NODE_ENV === 'production'
+console.log("DB UPL:",process.env.DATABASE_URL)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: isProduction
+    ? { rejectUnauthorized: false }
+    : false
 })
 
-pool.on('connect', () => {
-  console.log("Connected to DB")
-})
+// TEST CONNECTION
+const testConnection = async () => {
+  try {
+    const client = await pool.connect()
+    console.log("✅ DB CONNECTED SUCCESSFULLY")
+
+    const res = await client.query('SELECT NOW()')
+    console.log("🕒 DB TIME:", res.rows[0].now)
+
+    client.release()
+  } catch (err) {
+    console.error("❌ DB CONNECTION FAILED:", err.message)
+  }
+}
+
+testConnection()
 
 pool.on('error', (err) => {
   console.error('DB error', err)
@@ -175,18 +188,13 @@ module.exports = pool
 ================================================
 FILE: src/config/env.js
 ================================================
-require('dotenv').config()
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET missing")
 }
+
 module.exports = {
   PORT: process.env.PORT || 5000,
-  JWT_SECRET: process.env.JWT_SECRET,
-  DB_HOST: process.env.DB_HOST,
-  DB_USER: process.env.DB_USER,
-  DB_PASS: process.env.DB_PASS,
-  DB_NAME: process.env.DB_NAME,
-  DB_PORT: process.env.DB_PORT
+  JWT_SECRET: process.env.JWT_SECRET
 }
 
 
@@ -344,57 +352,120 @@ exports.getPartyLedger = async (req, res, next) => {
 FILE: src/controllers/productController.js
 ================================================
 const productService = require('../services/productService')
-exports.getProducts = async (req,res,next)=>{
-  try{
+
+
+exports.getProducts = async (req, res, next) => {
+  try {
     const products = await productService.getProducts()
     res.json(products)
-  }catch(err){
+  } catch (err) {
     next(err)
   }
-
 }
 
-exports.searchProducts = async (req,res,next)=>{
-  try{
-    const products = await productService.searchProducts(req.query.q)
+
+exports.searchProducts = async (req, res, next) => {
+  try {
+    const term = req.query.q
+
+    if (!term || term.trim() === "") {
+      return res.status(400).json({ message: "Search term required" })
+    }
+
+    const products = await productService.searchProducts(term)
     res.json(products)
-  }catch(err){
+  } catch (err) {
     next(err)
   }
 }
 
-exports.getProductByBarcode = async (req,res,next)=>{
-  try{
-    const product = await productService.getProductByBarcode(req.params.code)
+
+exports.getProductByBarcode = async (req, res, next) => {
+  try {
+    const code = req.params.code
+
+    if (!code) {
+      return res.status(400).json({ message: "Barcode required" })
+    }
+
+    const product = await productService.getProductByBarcode(code)
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" })
+    }
+
     res.json(product)
-  }catch(err){
+  } catch (err) {
     next(err)
   }
 }
 
-exports.createProduct = async (req,res,next)=>{
-  try{
-    const product = await productService.createProduct(req.body)
-    res.json(product)
-  }catch(err){
+
+exports.createProduct = async (req, res, next) => {
+  try {
+    const data = req.body
+
+  
+    if (!data.name || !data.units || data.units.length === 0) {
+      return res.status(400).json({
+        message: "Product name and units required"
+      })
+    }
+
+    const product = await productService.createProduct(
+      data,
+      req.user.id  
+    )
+
+    res.status(201).json(product)
+
+  } catch (err) {
     next(err)
   }
 }
 
-exports.updateProduct = async (req,res,next)=>{
-  try{
-    const product = await productService.updateProduct(req.params.id,req.body)
-    res.json(product)
-  }catch(err){
+exports.updateProduct = async (req, res, next) => {
+  try {
+    const id = req.params.id
+    const data = req.body
+
+    if (!id) {
+      return res.status(400).json({ message: "Product ID required" })
+    }
+
+    if (!data.name || !data.units) {
+      return res.status(400).json({
+        message: "Invalid product data"
+      })
+    }
+
+    const result = await productService.updateProduct(
+      id,
+      data,
+      req.user.id  
+    )
+
+    res.json(result)
+
+  } catch (err) {
     next(err)
   }
 }
 
-exports.deleteProduct = async (req,res,next)=>{
-  try{
-    await productService.deleteProduct(req.params.id)
-    res.json({message:"Product deleted"})
-  }catch(err){
+
+exports.deleteProduct = async (req, res, next) => {
+  try {
+    const id = req.params.id
+
+    if (!id) {
+      return res.status(400).json({ message: "Product ID required" })
+    }
+
+    await productService.deleteProduct(id)
+
+    res.json({ message: "Product deleted successfully" })
+
+  } catch (err) {
     next(err)
   }
 }
@@ -628,20 +699,24 @@ FILE: src/repositories/inventoryRepository.js
 ================================================
 const db = require('../config/db')
 
+/*
+SOURCE OF TRUTH = stock_movements
+*/
+
 exports.getInventory = async () => {
   const result = await db.query(`
     SELECT
-      i.product_unit_id,
+      pu.id AS product_unit_id,
       p.name,
       pu.unit_name,
-      i.quantity,
+      COALESCE(SUM(sm.quantity), 0) AS quantity,
       pu.purchase_rate,
-      (i.quantity * pu.purchase_rate) AS stock_value
-    FROM inventory i
-    JOIN product_units pu
-      ON pu.id = i.product_unit_id
-    JOIN products p
-      ON p.id = pu.product_id
+      COALESCE(SUM(sm.quantity), 0) * pu.purchase_rate AS stock_value
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN stock_movements sm
+      ON sm.product_unit_id = pu.id
+    GROUP BY pu.id, p.name, pu.unit_name, pu.purchase_rate
     ORDER BY p.name
   `)
 
@@ -656,6 +731,7 @@ exports.getStockMovements = async () => {
       pu.unit_name,
       sm.quantity,
       sm.movement_type,
+      sm.reference_id,
       sm.created_at
     FROM stock_movements sm
     JOIN product_units pu
@@ -665,72 +741,49 @@ exports.getStockMovements = async () => {
     ORDER BY sm.created_at DESC
     LIMIT 200
   `)
+
   return result.rows
 }
 
+/*
+KEEP FUNCTION â€” but FIX SOURCE
+*/
 exports.getLowStock = async () => {
   const result = await db.query(`
     SELECT
       p.name,
       pu.unit_name,
-      i.quantity,
+      COALESCE(SUM(sm.quantity),0) AS quantity,
       p.reorder_level
-    FROM inventory i
-    JOIN product_units pu
-      ON pu.id=i.product_unit_id
-    JOIN products p
-      ON p.id=pu.product_id
-    WHERE i.quantity <= p.reorder_level
-    ORDER BY i.quantity ASC
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN stock_movements sm
+      ON sm.product_unit_id = pu.id
+    GROUP BY p.name, pu.unit_name, p.reorder_level
+    HAVING COALESCE(SUM(sm.quantity),0) <= p.reorder_level
+    ORDER BY quantity ASC
   `)
+
   return result.rows
 }
 
-exports.insertAdjustment = async (client,data,userId)=>{
-  const result = await client.query(`
-    INSERT INTO inventory_adjustments
-    (
-      product_unit_id,
-      quantity_change,
-      reason,
-      created_by
-    )
-    VALUES ($1,$2,$3,$4)
-    RETURNING *
-  `,
-  [
-    data.product_unit_id,
-    data.quantity_change,
-    data.reason,
-    userId
-  ])
-  return result.rows[0]
-}
-
-exports.updateInventory = async (client,productUnitId,qty)=>{
-  await client.query(`
-    INSERT INTO inventory(product_unit_id,quantity)
-    VALUES ($1,$2)
-    ON CONFLICT(product_unit_id)
-    DO UPDATE
-    SET quantity = inventory.quantity + $2
-  `,
-  [productUnitId,qty])
-}
-
+/*
+ONLY VALID WRITE OPERATION
+*/
 exports.insertStockMovement = async (
   client,
   productUnitId,
   qty,
   type,
-  reference
-)=>{
+  reference,
+  userId
+) => {
   await client.query(`
     INSERT INTO stock_movements
-    (product_unit_id,quantity,movement_type,reference_id)
-    VALUES ($1,$2,$3,$4)
+    (product_unit_id, quantity, movement_type, reference_id, created_by)
+    VALUES ($1,$2,$3,$4,$5)
   `,
-  [productUnitId,qty,type,reference])
+  [productUnitId, qty, type, reference, userId])
 }
 
 
@@ -844,79 +897,78 @@ FILE: src/repositories/productRepository.js
 ================================================
 const db = require('../config/db')
 
+exports.getAll = async () => {
+  const result = await db.query(`
+    SELECT
+      p.id,
+      p.name,
+      p.sku,
+      p.category,
+      p.reorder_level,
 
-exports.getAll = async ()=>{
-  const result = await db.query(
-  `
-  SELECT
-    p.id,
-    p.name,
-    pu.id as unit_id,
-    pu.unit_name,
-    pu.barcode,
-    pu.sales_rate,
-    pu.purchase_rate
-  FROM products p
-  JOIN product_units pu
-  ON pu.product_id=p.id
-  ORDER BY p.name
-  `
-  )
+      pu.id AS unit_id,
+      pu.unit_name,
+      pu.barcode,
+      pu.mrp,
+      pu.purchase_rate,
+      pu.sales_rate,
+      pu.gst_percent,
+      pu.updated_at
+
+    FROM products p
+    JOIN product_units pu ON pu.product_id = p.id
+    ORDER BY p.name
+  `)
+
   return result.rows
 }
 
-exports.search = async (term)=>{
-  const result = await db.query(
-  `
-  SELECT
-    p.id,
-    p.name,
-    pu.id as unit_id,
-    pu.barcode,
-    pu.sales_rate,
-    pu.unit_name
-  FROM products p
-  JOIN product_units pu
-  ON pu.product_id=p.id
-  WHERE p.name ILIKE $1
-  OR pu.barcode=$2
-  LIMIT 20
+exports.search = async (term) => {
+  const result = await db.query(`
+    SELECT
+      p.id,
+      p.name,
+      pu.id AS unit_id,
+      pu.barcode,
+      pu.sales_rate,
+      pu.unit_name
+    FROM products p
+    JOIN product_units pu ON pu.product_id = p.id
+    WHERE p.name ILIKE $1 OR pu.barcode = $2
+    LIMIT 20
   `,
-  [`%${term}%`,term])
+  [`%${term}%`, term])
+
   return result.rows
 }
 
-exports.getByBarcode = async (barcode)=>{
-  const result = await db.query(
-  `
-  SELECT
-    p.id,
-    p.name,
-    pu.id as unit_id,
-    pu.unit_name,
-    pu.sales_rate,
-    pu.barcode
-  FROM product_units pu
-  JOIN products p
-  ON p.id=pu.product_id
-  WHERE pu.barcode=$1
+exports.getByBarcode = async (barcode) => {
+  const result = await db.query(`
+    SELECT
+      p.id,
+      p.name,
+      pu.id AS unit_id,
+      pu.unit_name,
+      pu.sales_rate,
+      pu.purchase_rate,
+      pu.mrp,
+      pu.gst_percent,
+      pu.barcode
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    WHERE pu.barcode = $1
   `,
   [barcode])
+
   return result.rows[0]
 }
 
-exports.insertProduct = async (data)=>{
-  const result = await db.query(
-  `
-  INSERT INTO products
-  (
-    name,
-    sku,
-    category,
-    reorder_level
-  )
-  VALUES ($1,$2,$3,$4)
-  RETURNING *
+exports.insertProduct = async (client, data) => {
+  const result = await client.query(`
+    INSERT INTO products
+    (name, sku, category, reorder_level)
+    VALUES ($1,$2,$3,$4)
+    RETURNING *
   `,
   [
     data.name,
@@ -924,42 +976,48 @@ exports.insertProduct = async (data)=>{
     data.category,
     data.reorder_level || 0
   ])
+
   return result.rows[0]
 }
-exports.insertUnit = async (productId,unit)=>{
-  await db.query(
-  `
-  INSERT INTO product_units
-  (
-    product_id,
-    unit_name,
-    conversion_factor,
-    barcode,
-    purchase_rate,
-    sales_rate
-  )
-  VALUES ($1,$2,$3,$4,$5,$6)
+
+exports.insertUnit = async (client, productId, unit, userId) => {
+  await client.query(`
+    INSERT INTO product_units
+    (
+      product_id,
+      unit_name,
+      conversion_factor,
+      barcode,
+      mrp,
+      purchase_rate,
+      sales_rate,
+      gst_percent,
+      updated_by
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
   `,
   [
     productId,
     unit.unit_name,
     unit.conversion_factor,
     unit.barcode,
+    unit.mrp,
     unit.purchase_rate,
-    unit.sales_rate
+    unit.sales_rate,
+    unit.gst_percent,
+    userId
   ])
 }
 
-exports.updateProduct = async (id,data)=>{
-  await db.query(
-  `
-  UPDATE products
-  SET
-    name=$1,
-    sku=$2,
-    category=$3,
-    reorder_level=$4
-  WHERE id=$5
+exports.updateProduct = async (client, id, data) => {
+  await client.query(`
+    UPDATE products
+    SET
+      name=$1,
+      sku=$2,
+      category=$3,
+      reorder_level=$4
+    WHERE id=$5
   `,
   [
     data.name,
@@ -968,22 +1026,45 @@ exports.updateProduct = async (id,data)=>{
     data.reorder_level,
     id
   ])
-
 }
 
-exports.deleteProduct = async (id)=>{
-  await db.query(
-  `DELETE FROM products WHERE id=$1`,
-  [id]
-  )
+exports.updateUnit = async (client, unitId, unit, userId) => {
+  await client.query(`
+    UPDATE product_units
+    SET
+      unit_name=$1,
+      barcode=$2,
+      mrp=$3,
+      purchase_rate=$4,
+      sales_rate=$5,
+      gst_percent=$6,
+      updated_at = NOW(),
+      updated_by = $7
+    WHERE id=$8
+  `,
+  [
+    unit.unit_name,
+    unit.barcode,
+    unit.mrp,
+    unit.purchase_rate,
+    unit.sales_rate,
+    unit.gst_percent,
+    userId,
+    unitId
+  ])
+}
 
+exports.deleteProduct = async (id) => {
+  await db.query(`DELETE FROM products WHERE id=$1`, [id])
 }
 
 
 ================================================
 FILE: src/repositories/purchaseRepository.js
 ================================================
-exports.insertPurchaseInvoice = async (client,data,userId)=>{
+const db = require('../config/db')
+
+exports.insertPurchaseInvoice = async (client, data, userId) => {
   const result = await client.query(`
     INSERT INTO invoices
     (
@@ -1012,10 +1093,11 @@ exports.insertPurchaseInvoice = async (client,data,userId)=>{
     data.total,
     userId
   ])
+
   return result.rows[0]
 }
 
-exports.insertPurchaseItem = async (client,invoiceId,item)=>{
+exports.insertPurchaseItem = async (client, invoiceId, item) => {
   await client.query(`
     INSERT INTO invoice_items
     (
@@ -1034,10 +1116,9 @@ exports.insertPurchaseItem = async (client,invoiceId,item)=>{
     item.rate,
     item.total
   ])
-
 }
 
-exports.insertPayment = async (client,invoiceId,payment)=>{
+exports.insertPayment = async (client, invoiceId, payment) => {
   await client.query(`
     INSERT INTO payments
     (
@@ -1054,6 +1135,36 @@ exports.insertPayment = async (client,invoiceId,payment)=>{
   ])
 }
 
+/*
+ðŸ”¥ ONLY STOCK WRITE
+*/
+exports.insertStockMovement = async (
+  client,
+  productUnitId,
+  qty,
+  type,
+  reference,
+  userId
+) => {
+  await client.query(`
+    INSERT INTO stock_movements
+    (product_unit_id, quantity, movement_type, reference_id, created_by)
+    VALUES ($1,$2,$3,$4,$5)
+  `,
+  [productUnitId, qty, type, reference, userId])
+}
+
+/*
+ðŸ”¥ MISSING FUNCTION (you forgot this)
+*/
+exports.getPurchaseById = async (id) => {
+  const result = await db.query(`
+    SELECT * FROM invoices WHERE id=$1 AND type='purchase'
+  `, [id])
+
+  return result.rows[0]
+}
+
 
 ================================================
 FILE: src/repositories/reportRepository.js
@@ -1061,242 +1172,201 @@ FILE: src/repositories/reportRepository.js
 const db = require('../config/db')
 
 /*
-Today's total sales
-Used in dashboard
+TODAY SALES
 */
 exports.getTodaySales = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COALESCE(SUM(grand_total),0) AS total_sales
-  FROM invoices
-  WHERE type='sale'
-  AND created_at::date = CURRENT_DATE
-  `
-  )
+  const result = await db.query(`
+    SELECT COALESCE(SUM(grand_total),0) AS total_sales
+    FROM invoices
+    WHERE type='sale'
+    AND created_at::date = CURRENT_DATE
+  `)
   return result.rows[0]
 }
 
 /*
-Number of transactions today
-*/
-exports.getTodayTransactions = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COUNT(*) AS transactions
-  FROM invoices
-  WHERE type='sale'
-  AND created_at::date = CURRENT_DATE
-  `
-  )
-  return result.rows[0]
-}
-
-/*
-Top selling products
-*/
-exports.getTopProducts = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  p.name,
-  SUM(ii.quantity) AS total_sold
-  FROM invoice_items ii
-  JOIN product_units pu
-    ON pu.id = ii.product_unit_id
-  JOIN products p
-    ON p.id = pu.product_id
-  JOIN invoices i
-    ON i.id = ii.invoice_id
-  WHERE i.type='sale'
-  GROUP BY p.name
-  ORDER BY total_sold DESC
-  LIMIT 10
-  `
-  )
-  return result.rows
-}
-
-/*
-Total inventory value
-*/
-exports.getInventoryValue = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COALESCE(SUM(i.quantity * pu.purchase_rate),0) AS stock_value
-  FROM inventory i
-  JOIN product_units pu
-    ON pu.id=i.product_unit_id
-  `
-  )
-  return result.rows[0]
-}
-
-/*
-Low stock alerts
-*/
-exports.getLowStock = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  p.name,
-  pu.unit_name,
-  i.quantity,
-  p.reorder_level
-  FROM inventory i
-  JOIN product_units pu
-    ON pu.id=i.product_unit_id
-  JOIN products p
-    ON p.id=pu.product_id
-  WHERE i.quantity < p.reorder_level
-  ORDER BY i.quantity ASC
-  `
-  )
-  return result.rows
-}
-
-/*
-Receivable summary
-Customers with outstanding balance
-*/
-exports.getReceivableSummary = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  p.name,
-  SUM(
-    CASE WHEN le.entry_type='debit'
-    THEN le.amount ELSE 0 END
-  ) -
-  SUM(
-    CASE WHEN le.entry_type='credit'
-    THEN le.amount ELSE 0 END
-  ) AS balance
-  FROM ledger_entries le
-  JOIN parties p
-    ON p.id = le.party_id
-  GROUP BY p.name
-  HAVING
-  SUM(
-    CASE WHEN le.entry_type='debit'
-    THEN le.amount ELSE 0 END
-  ) -
-  SUM(
-    CASE WHEN le.entry_type='credit'
-    THEN le.amount ELSE 0 END
-  ) > 0
-  ORDER BY balance DESC
-  `
-  )
-  return result.rows
-}
-
-/*
-Today's total purchases
-Used in dashboard
+TODAY PURCHASE
 */
 exports.getTodayPurchase = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COALESCE(SUM(grand_total),0) AS total_purchase
-  FROM invoices
-  WHERE type='purchase'
-  AND created_at::date = CURRENT_DATE
-  `
-  )
+  const result = await db.query(`
+    SELECT COALESCE(SUM(grand_total),0) AS total_purchase
+    FROM invoices
+    WHERE type='purchase'
+    AND created_at::date = CURRENT_DATE
+  `)
   return result.rows[0]
 }
 
 /*
-Payables summary â€“ total outstanding owed to suppliers
+TOP PRODUCTS
 */
-exports.getPayablesSummary = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COALESCE(
-    SUM(
-      CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
-    ) -
-    SUM(
-      CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
-    ), 0
-  ) AS total_payables
-  FROM ledger_entries le
-  JOIN parties p ON p.id = le.party_id
-  WHERE p.type = 'supplier'
-  `
-  )
-  return result.rows[0]
-}
-
-/*
-Total receivables â€“ sum of outstanding balances from customers
-*/
-exports.getTotalReceivables = async () => {
-  const result = await db.query(
-  `
-  SELECT
-  COALESCE(
-    SUM(
-      CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
-    ) -
-    SUM(
-      CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
-    ), 0
-  ) AS total_receivables
-  FROM ledger_entries le
-  JOIN parties p ON p.id = le.party_id
-  WHERE p.type = 'customer'
-  `
-  )
-  return result.rows[0]
-}
-
-/*
-Recent transactions (last 10)
-Used in dashboard
-*/
-exports.getRecentTransactions = async () => {
-  const result = await db.query(
-  `
-  SELECT
-    i.invoice_number AS invoice,
-    i.type,
-    COALESCE(p.name, 'Walk-in') AS party,
-    i.grand_total AS amount
-  FROM invoices i
-  LEFT JOIN parties p ON p.id = i.party_id
-  ORDER BY i.created_at DESC
-  LIMIT 10
-  `
-  )
+exports.getTopProducts = async () => {
+  const result = await db.query(`
+    SELECT
+      p.name,
+      SUM(ii.quantity) AS total_sold
+    FROM invoice_items ii
+    JOIN product_units pu ON pu.id = ii.product_unit_id
+    JOIN products p ON p.id = pu.product_id
+    JOIN invoices i ON i.id = ii.invoice_id
+    WHERE i.type='sale'
+    GROUP BY p.name
+    ORDER BY total_sold DESC
+    LIMIT 10
+  `)
   return result.rows
 }
 
 /*
-Sales report by date range
+ðŸ”¥ INVENTORY VALUE (FIXED)
 */
-exports.getSalesReport = async (from,to) => {
-  const result = await db.query(
-  `
-  SELECT
-    i.invoice_number,
-    i.created_at,
-    p.name AS customer,
-    i.grand_total
-  FROM invoices i
-  LEFT JOIN parties p
-  ON p.id=i.party_id
-  WHERE i.type='sale'
-  AND i.created_at BETWEEN $1 AND $2
-  ORDER BY i.created_at DESC
+exports.getInventoryValue = async () => {
+  const result = await db.query(`
+    SELECT
+      COALESCE(SUM(sm.quantity * pu.purchase_rate),0) AS stock_value
+    FROM stock_movements sm
+    JOIN product_units pu ON pu.id = sm.product_unit_id
+  `)
+
+  return result.rows[0]
+}
+
+/*
+ðŸ”¥ LOW STOCK (FIXED)
+*/
+exports.getLowStock = async () => {
+  const result = await db.query(`
+    SELECT
+      p.name,
+      pu.unit_name,
+      COALESCE(SUM(sm.quantity),0) AS quantity,
+      p.reorder_level
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN stock_movements sm
+      ON sm.product_unit_id = pu.id
+    GROUP BY p.name, pu.unit_name, p.reorder_level
+    HAVING COALESCE(SUM(sm.quantity),0) <= p.reorder_level
+    ORDER BY quantity ASC
+  `)
+
+  return result.rows
+}
+
+/*
+RECEIVABLE SUMMARY
+*/
+exports.getReceivableSummary = async () => {
+  const result = await db.query(`
+    SELECT
+      p.name,
+      SUM(
+        CASE WHEN le.entry_type='debit'
+        THEN le.amount ELSE 0 END
+      ) -
+      SUM(
+        CASE WHEN le.entry_type='credit'
+        THEN le.amount ELSE 0 END
+      ) AS balance
+    FROM ledger_entries le
+    JOIN parties p ON p.id = le.party_id
+    GROUP BY p.name
+    HAVING
+      SUM(
+        CASE WHEN le.entry_type='debit'
+        THEN le.amount ELSE 0 END
+      ) -
+      SUM(
+        CASE WHEN le.entry_type='credit'
+        THEN le.amount ELSE 0 END
+      ) > 0
+    ORDER BY balance DESC
+  `)
+
+  return result.rows
+}
+
+/*
+TOTAL RECEIVABLES
+*/
+exports.getTotalReceivables = async () => {
+  const result = await db.query(`
+    SELECT
+      COALESCE(
+        SUM(
+          CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
+        ) -
+        SUM(
+          CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
+        ), 0
+      ) AS total_receivables
+    FROM ledger_entries le
+    JOIN parties p ON p.id = le.party_id
+    WHERE p.type = 'customer'
+  `)
+
+  return result.rows[0]
+}
+
+/*
+PAYABLES
+*/
+exports.getPayablesSummary = async () => {
+  const result = await db.query(`
+    SELECT
+      COALESCE(
+        SUM(
+          CASE WHEN le.entry_type='credit' THEN le.amount ELSE 0 END
+        ) -
+        SUM(
+          CASE WHEN le.entry_type='debit' THEN le.amount ELSE 0 END
+        ), 0
+      ) AS total_payables
+    FROM ledger_entries le
+    JOIN parties p ON p.id = le.party_id
+    WHERE p.type = 'supplier'
+  `)
+
+  return result.rows[0]
+}
+
+/*
+RECENT TRANSACTIONS
+*/
+exports.getRecentTransactions = async () => {
+  const result = await db.query(`
+    SELECT
+      i.invoice_number AS invoice,
+      i.type,
+      COALESCE(p.name, 'Walk-in') AS party,
+      i.grand_total AS amount
+    FROM invoices i
+    LEFT JOIN parties p ON p.id = i.party_id
+    ORDER BY i.created_at DESC
+    LIMIT 10
+  `)
+
+  return result.rows
+}
+
+/*
+SALES REPORT
+*/
+exports.getSalesReport = async (from, to) => {
+  const result = await db.query(`
+    SELECT
+      i.invoice_number,
+      i.created_at,
+      p.name AS customer,
+      i.grand_total
+    FROM invoices i
+    LEFT JOIN parties p ON p.id = i.party_id
+    WHERE i.type='sale'
+    AND i.created_at BETWEEN $1 AND $2
+    ORDER BY i.created_at DESC
   `,
-  [from,to]
-  )
+  [from, to])
+
   return result.rows
 }
 
@@ -1306,15 +1376,15 @@ FILE: src/repositories/salesRepository.js
 ================================================
 const db = require('../config/db')
 
-exports.insertInvoice = async (client,data,userId)=>{
-  const result = await client.query(
-  `
-  INSERT INTO invoices
-  (invoice_number,type,party_id,subtotal,discount,tax,grand_total,created_by)
-  VALUES
-  (generate_invoice_number('sale'),
-    'sale',$1,$2,$3,$4,$5,$6)
-  RETURNING id,invoice_number
+exports.insertInvoice = async (client, data, userId) => {
+  const result = await client.query(`
+    INSERT INTO invoices
+    (invoice_number, type, party_id, subtotal, discount, tax, grand_total, created_by)
+    VALUES (
+      generate_invoice_number('sale'),
+      'sale', $1, $2, $3, $4, $5, $6
+    )
+    RETURNING id, invoice_number
   `,
   [
     data.party_id,
@@ -1324,15 +1394,15 @@ exports.insertInvoice = async (client,data,userId)=>{
     data.total,
     userId
   ])
+
   return result.rows[0]
 }
 
-exports.insertInvoiceItem = async (client,invoiceId,item)=>{
-  await client.query(
-  `
-  INSERT INTO invoice_items
-  (invoice_id,product_unit_id,quantity,rate,total)
-  VALUES ($1,$2,$3,$4,$5)
+exports.insertInvoiceItem = async (client, invoiceId, item) => {
+  await client.query(`
+    INSERT INTO invoice_items
+    (invoice_id, product_unit_id, quantity, rate, total)
+    VALUES ($1,$2,$3,$4,$5)
   `,
   [
     invoiceId,
@@ -1343,12 +1413,11 @@ exports.insertInvoiceItem = async (client,invoiceId,item)=>{
   ])
 }
 
-exports.insertPayment = async (client,invoiceId,payment)=>{
-  await client.query(
-  `
-  INSERT INTO payments
-  (invoice_id,payment_method,amount)
-  VALUES ($1,$2,$3)
+exports.insertPayment = async (client, invoiceId, payment) => {
+  await client.query(`
+    INSERT INTO payments
+    (invoice_id, payment_method, amount)
+    VALUES ($1,$2,$3)
   `,
   [
     invoiceId,
@@ -1357,38 +1426,63 @@ exports.insertPayment = async (client,invoiceId,payment)=>{
   ])
 }
 
-exports.getStockForUpdate = async (client,productUnitId)=>{
-  const result = await client.query(
-  `
-  SELECT quantity FROM inventory
-  WHERE product_unit_id=$1
-  FOR UPDATE
+/*
+ðŸ”¥ CRITICAL FIX: STOCK CHECK FROM MOVEMENTS
+*/
+exports.getAvailableStock = async (client, productUnitId) => {
+  const result = await client.query(`
+    SELECT COALESCE(SUM(quantity),0) AS stock
+    FROM stock_movements
+    WHERE product_unit_id = $1
   `,
-  [productUnitId]
-  )
+  [productUnitId])
+
+  return Number(result.rows[0].stock)
+}
+
+/*
+ðŸ”¥ ONLY WRITE OPERATION
+*/
+exports.insertStockMovement = async (
+  client,
+  productUnitId,
+  qty,
+  type,
+  reference,
+  userId
+) => {
+  await client.query(`
+    INSERT INTO stock_movements
+    (product_unit_id, quantity, movement_type, reference_id, created_by)
+    VALUES ($1,$2,$3,$4,$5)
+  `,
+  [productUnitId, qty, type, reference, userId])
+}
+
+exports.saveDraft = async (userId, data) => {
+  const result = await db.query(`
+    INSERT INTO sales_drafts (user_id, data)
+    VALUES ($1, $2)
+    RETURNING *
+  `,
+  [userId, data])
+
   return result.rows[0]
 }
 
-exports.reduceInventory = async (client,productUnitId,qty)=>{
-  await client.query(
-  `
-  UPDATE inventory
-  SET quantity = quantity - $1
-  WHERE product_unit_id=$2
+exports.getDrafts = async (userId) => {
+  const result = await db.query(`
+    SELECT * FROM sales_drafts
+    WHERE user_id = $1 AND status = 'open'
+    ORDER BY created_at DESC
   `,
-  [qty,productUnitId]
-  )
+  [userId])
+
+  return result.rows
 }
 
-exports.insertStockMovement = async (client,productUnitId,qty,type,ref)=>{
-  await client.query(
-  `
-  INSERT INTO stock_movements
-  (product_unit_id,quantity,movement_type,reference_id)
-  VALUES ($1,$2,$3,$4)
-  `,
-  [productUnitId,qty,type,ref]
-  )
+exports.deleteDraft = async (id) => {
+  await db.query(`DELETE FROM sales_drafts WHERE id=$1`, [id])
 }
 
 
@@ -1570,9 +1664,13 @@ const router = express.Router()
 
 const salesController = require('../controllers/salesController')
 const auth = require('../middleware/authMiddleware')
+
 router.post('/create', auth, salesController.createSale)
 router.get('/:id', auth, salesController.getSaleById)
 router.post('/return', auth, salesController.returnSale)
+router.post('/quick', auth, salesController.saveQuickSale)
+router.get('/quick', auth, salesController.getQuickSales)
+router.delete('/quick/:id', auth, salesController.deleteQuickSale)
 module.exports = router
 
 
@@ -1633,46 +1731,46 @@ FILE: src/services/inventoryService.js
 const db = require('../config/db')
 const inventoryRepo = require('../repositories/inventoryRepository')
 
-exports.getInventory = async ()=>{
+exports.getInventory = async () => {
   return inventoryRepo.getInventory()
 }
 
-exports.getStockMovements = async ()=>{
+exports.getStockMovements = async () => {
   return inventoryRepo.getStockMovements()
 }
 
-exports.getLowStock = async ()=>{
+exports.getLowStock = async () => {
   return inventoryRepo.getLowStock()
 }
 
-exports.adjustInventory = async (data,userId)=>{
+/*
+PROPER ADJUSTMENT = STOCK MOVEMENT
+*/
+exports.adjustInventory = async (data, userId) => {
   const client = await db.connect()
-  try{
+
+  try {
     await client.query("BEGIN")
-    const adjustment =
-      await inventoryRepo.insertAdjustment(
-        client,
-        data,
-        userId
-      )
-    await inventoryRepo.updateInventory(
-      client,
-      data.product_unit_id,
-      data.quantity_change
-    )
+
     await inventoryRepo.insertStockMovement(
       client,
       data.product_unit_id,
       data.quantity_change,
       'adjustment',
-      adjustment.id
+      null,
+      userId
     )
+
     await client.query("COMMIT")
-    return adjustment
-  }catch(err){
+
+    return {
+      message: "Inventory adjusted successfully"
+    }
+
+  } catch (err) {
     await client.query("ROLLBACK")
     throw err
-  }finally{
+  } finally {
     client.release()
   }
 }
@@ -1707,38 +1805,82 @@ exports.getPartyLedger = async (partyId) => {
 ================================================
 FILE: src/services/productService.js
 ================================================
+const db = require('../config/db')
 const productRepo = require('../repositories/productRepository')
 
-exports.getProducts = async ()=>{
+exports.getProducts = async () => {
   return productRepo.getAll()
 }
 
-exports.searchProducts = async (term)=>{
+exports.searchProducts = async (term) => {
   return productRepo.search(term)
 }
 
-exports.getProductByBarcode = async (barcode)=>{
+exports.getProductByBarcode = async (barcode) => {
   return productRepo.getByBarcode(barcode)
 }
 
+/*
+ðŸ”¥ FULL TRANSACTION
+*/
+exports.createProduct = async (data, userId) => {
+  const client = await db.connect()
 
+  try {
+    await client.query("BEGIN")
 
-exports.createProduct = async (data)=>{
-  const product = await productRepo.insertProduct(data)
-  for(const unit of data.units){
-    await productRepo.insertUnit(product.id,unit)
+    const product = await productRepo.insertProduct(client, data)
+
+    for (const unit of data.units) {
+      await productRepo.insertUnit(
+        client,
+        product.id,
+        unit,
+        userId
+      )
+    }
+
+    await client.query("COMMIT")
+    return product
+
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
   }
-  return product
 }
 
+exports.updateProduct = async (id, data, userId) => {
+  const client = await db.connect()
 
+  try {
+    await client.query("BEGIN")
 
-exports.updateProduct = async (id,data)=>{
-  await productRepo.updateProduct(id,data)
-  return {message:"Product updated"}
+    await productRepo.updateProduct(client, id, data)
+
+    for (const unit of data.units) {
+      await productRepo.updateUnit(
+        client,
+        unit.id,
+        unit,
+        userId
+      )
+    }
+
+    await client.query("COMMIT")
+
+    return { message: "Product updated" }
+
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
-exports.deleteProduct = async (id)=>{
+exports.deleteProduct = async (id) => {
   return productRepo.deleteProduct(id)
 }
 
@@ -1748,55 +1890,62 @@ FILE: src/services/purchaseService.js
 ================================================
 const db = require('../config/db')
 const purchaseRepo = require('../repositories/purchaseRepository')
-const inventoryRepo = require('../repositories/inventoryRepository')
 
-exports.createPurchase = async (data,userId)=>{
+exports.createPurchase = async (data, userId) => {
   const client = await db.connect()
-  try{
+
+  try {
     await client.query("BEGIN")
-    const invoice =
-      await purchaseRepo.insertPurchaseInvoice(
-        client,
-        data,
-        userId
-      )
+
+    // ðŸ”¥ STEP 1: CREATE INVOICE
+    const invoice = await purchaseRepo.insertPurchaseInvoice(
+      client,
+      data,
+      userId
+    )
+
     const invoiceId = invoice.id
-    for(const item of data.items){
+
+    // ðŸ”¥ STEP 2: INSERT ITEMS + STOCK IN
+    for (const item of data.items) {
       await purchaseRepo.insertPurchaseItem(
         client,
         invoiceId,
         item
       )
-      await inventoryRepo.updateInventory(
+
+      await purchaseRepo.insertStockMovement(
         client,
         item.product_unit_id,
-        item.quantity
-      )
-      await inventoryRepo.insertStockMovement(
-        client,
-        item.product_unit_id,
-        item.quantity,
+        item.quantity,        // POSITIVE
         'purchase',
-        invoiceId
+        invoiceId,
+        userId
       )
     }
-    for(const pay of data.payments){
+
+    // ðŸ”¥ STEP 3: PAYMENTS
+    for (const pay of data.payments || []) {
       await purchaseRepo.insertPayment(
         client,
         invoiceId,
         pay
       )
     }
+
     await client.query("COMMIT")
+
     return invoice
-  }catch(err){
+
+  } catch (err) {
     await client.query("ROLLBACK")
     throw err
-  }finally{
+  } finally {
     client.release()
   }
 }
-exports.getPurchaseById = async(id)=>{
+
+exports.getPurchaseById = async (id) => {
   return purchaseRepo.getPurchaseById(id)
 }
 
@@ -1805,10 +1954,7 @@ exports.getPurchaseById = async(id)=>{
 FILE: src/services/reportService.js
 ================================================
 const reportRepo = require('../repositories/reportRepository')
-/*
-Dashboard summary
-Used by POS home screen
-*/
+
 exports.getDashboard = async () => {
   const [
     todaySales,
@@ -1825,6 +1971,7 @@ exports.getDashboard = async () => {
     reportRepo.getPayablesSummary(),
     reportRepo.getRecentTransactions()
   ])
+
   return {
     today_sales: Number(todaySales.total_sales) || 0,
     today_purchase: Number(todayPurchase.total_purchase) || 0,
@@ -1842,21 +1989,10 @@ exports.getSalesReport = async (from, to) => {
   return reportRepo.getSalesReport(from, to)
 }
 
-exports.getTopProducts = async () => {
-  return reportRepo.getTopProducts()
-}
-
-exports.getInventoryValue = async () => {
-  return reportRepo.getInventoryValue()
-}
-
-exports.getReceivables = async () => {
-  return reportRepo.getReceivableSummary()
-}
-
-exports.getLowStock = async () => {
-  return reportRepo.getLowStock()
-}
+exports.getTopProducts = () => reportRepo.getTopProducts()
+exports.getInventoryValue = () => reportRepo.getInventoryValue()
+exports.getReceivables = () => reportRepo.getReceivableSummary()
+exports.getLowStock = () => reportRepo.getLowStock()
 
 
 ================================================
@@ -1865,57 +2001,120 @@ FILE: src/services/salesService.js
 const db = require('../config/db')
 const salesRepo = require('../repositories/salesRepository')
 
-exports.createSale = async (data,userId)=>{
+exports.createSale = async (data, userId) => {
   const client = await db.connect()
-  try{
+
+  try {
     await client.query("BEGIN")
+
+    // ðŸ”¥ STEP 1: VALIDATE STOCK
+    for (const item of data.items) {
+      const stock = await salesRepo.getAvailableStock(
+        client,
+        item.product_unit_id
+      )
+
+      if (stock < item.quantity) {
+        throw new Error(
+          `Insufficient stock for product_unit_id ${item.product_unit_id}`
+        )
+      }
+    }
+
+    // ðŸ”¥ STEP 2: CREATE INVOICE
     const invoice = await salesRepo.insertInvoice(
       client,
       data,
       userId
     )
+
     const invoiceId = invoice.id
-    for(const item of data.items){
-      const stock = await salesRepo.getStockForUpdate(
-        client,
-        item.product_unit_id
-      )
-      if(!stock || stock.quantity < item.quantity){
-        throw new Error("Insufficient stock")
-      }
+
+    // ðŸ”¥ STEP 3: INSERT ITEMS + STOCK MOVEMENT
+    for (const item of data.items) {
       await salesRepo.insertInvoiceItem(
         client,
         invoiceId,
         item
       )
-      await salesRepo.reduceInventory(
-        client,
-        item.product_unit_id,
-        item.quantity
-      )
+
       await salesRepo.insertStockMovement(
         client,
         item.product_unit_id,
         -item.quantity,
         'sale',
-        invoiceId
+        invoiceId,
+        userId
       )
     }
-    for(const pay of data.payments){
+
+    // ðŸ”¥ STEP 4: PAYMENTS
+    for (const pay of data.payments || []) {
       await salesRepo.insertPayment(
         client,
         invoiceId,
         pay
       )
     }
+
     await client.query("COMMIT")
+
     return invoice
-  }catch(err){
+
+  } catch (err) {
     await client.query("ROLLBACK")
     throw err
-  }finally{
+  } finally {
     client.release()
   }
+}
+exports.getSaleById = async (id) => {
+  const result = await db.query(`
+    SELECT * FROM invoices WHERE id = $1
+  `, [id])
+
+  return result.rows[0]
+}
+
+exports.returnSale = async (data, userId) => {
+  const client = await db.connect()
+
+  try {
+    await client.query("BEGIN")
+
+    for (const item of data.items) {
+      await salesRepo.insertStockMovement(
+        client,
+        item.product_unit_id,
+        item.quantity,
+        'sale_return',
+        data.invoice_id,
+        userId
+      )
+    }
+
+    await client.query("COMMIT")
+
+    return { message: "Return processed" }
+
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+exports.saveQuickSale = async (userId, data) => {
+  return salesRepo.saveDraft(userId, data)
+}
+
+exports.getQuickSales = async (userId) => {
+  return salesRepo.getDrafts(userId)
+}
+
+exports.deleteQuickSale = async (id) => {
+  return salesRepo.deleteDraft(id)
 }
 
 

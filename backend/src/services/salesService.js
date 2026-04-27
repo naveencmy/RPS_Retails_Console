@@ -1,55 +1,123 @@
 const db = require('../config/db')
 const salesRepo = require('../repositories/salesRepository')
 
-exports.createSale = async (data,userId)=>{
+exports.createSale = async (data, userId) => {
   const client = await db.connect()
-  try{
+
+  try {
     await client.query("BEGIN")
-    const invoice = await salesRepo.insertInvoice(
+
+    if (!data.items || data.items.length === 0) {
+      throw new Error("Items required")
+    }
+
+    // 1. Validate stock (LOCK)
+    await salesRepo.validateStock(client, data.items)
+
+    // 2. Create invoice
+    const invoice = await salesRepo.insertInvoice(client, data, userId)
+
+    // 3. Items + stock movement
+    await salesRepo.insertItemsAndMovements(
       client,
-      data,
+      invoice.id,
+      data.items,
       userId
     )
-    const invoiceId = invoice.id
-    for(const item of data.items){
-      const stock = await salesRepo.getStockForUpdate(
+
+    // 4. Payments
+    const totalPaid = await salesRepo.insertPayments(
+      client,
+      invoice.id,
+      data.payments || []
+    )
+
+    // 5. Ledger: SALE (DEBIT)
+    await salesRepo.insertLedgerEntry(
+      client,
+      data.party_id,
+      invoice.id,
+      data.total,
+      'debit',
+      'Sale'
+    )
+
+    // 6. Ledger: PAYMENTS (CREDIT)
+    if (totalPaid > 0) {
+      await salesRepo.insertLedgerEntry(
         client,
-        item.product_unit_id
+        data.party_id,
+        invoice.id,
+        totalPaid,
+        'credit',
+        'Payment Received'
       )
-      if(!stock || stock.quantity < item.quantity){
-        throw new Error("Insufficient stock")
-      }
-      await salesRepo.insertInvoiceItem(
-        client,
-        invoiceId,
-        item
-      )
-      await salesRepo.reduceInventory(
-        client,
-        item.product_unit_id,
-        item.quantity
-      )
+    }
+
+    await client.query("COMMIT")
+    return invoice
+
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+exports.getSaleById = async (id) => {
+  return salesRepo.getSaleById(id)
+}
+
+exports.returnSale = async (data, userId) => {
+  const client = await db.connect()
+
+  try {
+    await client.query("BEGIN")
+
+    // 1. Stock reverse
+    for (const item of data.items) {
       await salesRepo.insertStockMovement(
         client,
         item.product_unit_id,
-        -item.quantity,
-        'sale',
-        invoiceId
+        item.quantity,
+        'sale_return',
+        data.invoice_id,
+        userId
       )
     }
-    for(const pay of data.payments){
-      await salesRepo.insertPayment(
+
+    // 2. Ledger reverse
+    if (data.party_id) {
+      await salesRepo.insertLedgerEntry(
         client,
-        invoiceId,
-        pay
+        data.party_id,
+        data.invoice_id,
+        data.total,
+        'credit',
+        'Sale Return'
       )
     }
+
     await client.query("COMMIT")
-    return invoice
-  }catch(err){
+    return { message: "Return processed" }
+
+  } catch (err) {
     await client.query("ROLLBACK")
     throw err
-  }finally{
+  } finally {
     client.release()
   }
+}
+
+exports.saveQuickSale = async (userId, data) => {
+  return salesRepo.saveDraft(userId, data)
+}
+
+exports.getQuickSales = async (userId) => {
+  return salesRepo.getDrafts(userId)
+}
+
+exports.deleteQuickSale = async (id) => {
+  return salesRepo.deleteDraft(id)
 }
