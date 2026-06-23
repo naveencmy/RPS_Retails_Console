@@ -1,0 +1,88 @@
+# Vercel Speed Insights Implementation Report
+
+## Summary
+Successfully installed and configured Vercel Speed Insights for this React + Vite project following the latest official documentation from Vercel.
+
+## Changes Made
+
+### 1. Package Installation
+- **Added**: `@vercel/speed-insights` version 2.0.0 to project dependencies
+- **Command used**: `pnpm add @vercel/speed-insights`
+- **Lock file updated**: pnpm-lock.yaml updated with new dependency tree
+
+### 2. Code Integration
+- **Modified**: `src/main.tsx`
+  - Added import: `import { SpeedInsights } from "@vercel/speed-insights/react";`
+  - Integrated `<SpeedInsights />` component within the App component's JSX
+  - Positioned after `</AuthProvider>` and within `<TooltipProvider>` to ensure it's rendered on all pages
+
+### 3. Formatting Updates
+- **Modified**: `AGENTS.md`, `index.html`, `src/components/Layout.tsx`
+  - Applied prettier formatting for code consistency (automated via `pnpm run format.fix`)
+  - No functional changes, only formatting improvements
+
+## Implementation Details
+
+### Framework-Specific Approach
+This is a **React + Vite** project, so I followed the React-specific instructions from the Vercel documentation:
+- Used the `@vercel/speed-insights/react` import path
+- Added the `<SpeedInsights />` component to the root App component
+
+### Component Placement
+The SpeedInsights component was strategically placed:
+```tsx
+<QueryClientProvider client={queryClient}>
+  <TooltipProvider>
+    <Toaster />
+    <Sonner />
+    <AuthProvider>
+      <BrowserRouter>
+        {/* Routes */}
+      </BrowserRouter>
+    </AuthProvider>
+    <SpeedInsights />  // ← Added here
+  </TooltipProvider>
+</QueryClientProvider>
+```
+
+This placement ensures:
+- Speed Insights tracks all routes including both public and protected pages
+- It's rendered once at the app root level
+- It has access to the React context providers
+
+## Verification
+
+### Build Verification ✓
+- Client build completed successfully
+- Output: `dist/spa/index.html` and bundled assets generated
+- No TypeScript errors introduced by the changes
+
+### Tests ✓
+- All existing tests pass (5 tests in utils.spec.ts)
+- No regressions detected
+
+### Code Quality ✓
+- Prettier formatting applied and verified
+- Code follows existing project patterns
+- No linting errors introduced
+
+## Next Steps
+
+To see Speed Insights data in action:
+1. Deploy this application to Vercel
+2. Enable Speed Insights in your Vercel project dashboard (Project Settings → Speed Insights → Enable)
+3. After deployment and user visits, view performance metrics in the Vercel dashboard
+
+## Files Changed
+- `package.json` - Added @vercel/speed-insights dependency
+- `pnpm-lock.yaml` - Updated dependency lock file
+- `src/main.tsx` - Added SpeedInsights component import and integration
+- `AGENTS.md` - Prettier formatting applied
+- `index.html` - Prettier formatting applied
+- `src/components/Layout.tsx` - Prettier formatting applied
+
+## Technical Notes
+- Package manager: pnpm (v10.14.0)
+- Framework: React 18.3.1 with Vite 7.1.2
+- Speed Insights version: 2.0.0 (latest as of implementation)
+- Documentation source: https://vercel.com/docs/speed-insights/quickstart
