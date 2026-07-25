@@ -8,7 +8,6 @@ exports.getAll = async () => {
       p.sku,
       p.category,
       p.reorder_level,
-
       pu.id AS unit_id,
       pu.unit_name,
       pu.barcode,
@@ -17,12 +16,10 @@ exports.getAll = async () => {
       pu.sales_rate,
       pu.gst_percent,
       pu.updated_at
-
     FROM products p
     JOIN product_units pu ON pu.product_id = p.id
     ORDER BY p.name
   `)
-
   return result.rows
 }
 
@@ -34,14 +31,13 @@ exports.search = async (term) => {
       pu.id AS unit_id,
       pu.barcode,
       pu.sales_rate,
+      pu.purchase_rate,
       pu.unit_name
     FROM products p
     JOIN product_units pu ON pu.product_id = p.id
     WHERE p.name ILIKE $1 OR pu.barcode = $2
     LIMIT 20
-  `,
-  [`%${term}%`, term])
-
+  `, [`%${term}%`, term])
   return result.rows
 }
 
@@ -60,92 +56,56 @@ exports.getByBarcode = async (barcode) => {
     FROM product_units pu
     JOIN products p ON p.id = pu.product_id
     WHERE pu.barcode = $1
-  `,
-  [barcode])
-
+  `, [barcode])
   return result.rows[0]
 }
 
 exports.insertProduct = async (client, data) => {
   const result = await client.query(`
-    INSERT INTO products
-    (name, sku, category, reorder_level)
-    VALUES ($1,$2,$3,$4)
+    INSERT INTO products (name, sku, category, reorder_level)
+    VALUES ($1, $2, $3, $4)
     RETURNING *
-  `,
-  [
+  `, [
     data.name,
-    data.sku,
-    data.category,
-    data.reorder_level || 0
+    data.sku || null,
+    data.category || null,
+    data.reorder_level || 0,
   ])
-
   return result.rows[0]
 }
 
 exports.insertUnit = async (client, productId, unit, userId) => {
   await client.query(`
     INSERT INTO product_units
-    (
-      product_id,
-      unit_name,
-      conversion_factor,
-      barcode,
-      mrp,
-      purchase_rate,
-      sales_rate,
-      gst_percent,
-      updated_by
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-  `,
-  [
+    (product_id, unit_name, conversion_factor, barcode, mrp, purchase_rate, sales_rate, gst_percent, updated_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [
     productId,
     unit.unit_name,
-    unit.conversion_factor,
-    unit.barcode,
-    unit.mrp,
-    unit.purchase_rate,
-    unit.sales_rate,
-    unit.gst_percent,
-    userId
+    unit.conversion_factor || 1,
+    unit.barcode || null,
+    unit.mrp || 0,
+    unit.purchase_rate || 0,
+    unit.sales_rate || 0,
+    unit.gst_percent || 0,
+    userId,
   ])
 }
 
 exports.updateProduct = async (client, id, data) => {
   await client.query(`
     UPDATE products
-    SET
-      name=$1,
-      sku=$2,
-      category=$3,
-      reorder_level=$4
+    SET name=$1, sku=$2, category=$3, reorder_level=$4
     WHERE id=$5
-  `,
-  [
-    data.name,
-    data.sku,
-    data.category,
-    data.reorder_level,
-    id
-  ])
+  `, [data.name, data.sku, data.category, data.reorder_level, id])
 }
 
 exports.updateUnit = async (client, unitId, unit, userId) => {
   await client.query(`
     UPDATE product_units
-    SET
-      unit_name=$1,
-      barcode=$2,
-      mrp=$3,
-      purchase_rate=$4,
-      sales_rate=$5,
-      gst_percent=$6,
-      updated_at = NOW(),
-      updated_by = $7
+    SET unit_name=$1, barcode=$2, mrp=$3, purchase_rate=$4, sales_rate=$5, gst_percent=$6, updated_at=NOW(), updated_by=$7
     WHERE id=$8
-  `,
-  [
+  `, [
     unit.unit_name,
     unit.barcode,
     unit.mrp,
@@ -153,10 +113,22 @@ exports.updateUnit = async (client, unitId, unit, userId) => {
     unit.sales_rate,
     unit.gst_percent,
     userId,
-    unitId
+    unitId,
   ])
 }
 
-exports.deleteProduct = async (id) => {
-  await db.query(`DELETE FROM products WHERE id=$1`, [id])
+exports.hasInvoiceReferences = async (productId) => {
+  const result = await db.query(`
+    SELECT EXISTS(
+      SELECT 1 FROM invoice_items ii
+      JOIN product_units pu ON pu.id = ii.product_unit_id
+      WHERE pu.product_id = $1
+    ) AS has_refs
+  `, [productId])
+  return result.rows[0].has_refs
+}
+
+exports.deleteProduct = async (client, id) => {
+  await client.query('DELETE FROM product_units WHERE product_id=$1', [id])
+  await client.query('DELETE FROM products WHERE id=$1', [id])
 }

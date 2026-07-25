@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { type Role } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { AuthAPI } from "@/lib/api";
 
@@ -17,9 +16,9 @@ export default function Login() {
   const [accessKey, setAccessKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
-  const [visibleLines, setVisibleLines] = useState<number>(0);
+  const [visibleLines, setVisibleLines] = useState(0);
   const [error, setError] = useState("");
-  const uidRef = useRef<HTMLInputElement>(null);
+  const uidRef = useRef(null);
 
   // Cursor blink
   useEffect(() => {
@@ -43,7 +42,7 @@ export default function Login() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = uid.trim();
     if (!trimmed) {
@@ -55,7 +54,7 @@ export default function Login() {
     try {
       const res = await AuthAPI.login({ username: trimmed, password: accessKey });
       localStorage.setItem("token", res.token);
-      const role = (res.user.role as Role) ?? "owner";
+      const role = (res.user.role) ?? "owner";
       login({ name: res.user.name, role });
       navigate("/dashboard");
     } catch {

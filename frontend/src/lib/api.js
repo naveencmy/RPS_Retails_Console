@@ -1,4 +1,4 @@
-import axios, { AxiosError } from "axios"
+import axios from "axios"
 
 // =====================================
 // BASE URL (AUTO SWITCH DEV / PROD)
@@ -11,7 +11,7 @@ const BASE_URL =
 // =====================================
 const API = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000, // 10s timeout
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -38,18 +38,17 @@ API.interceptors.request.use(
 // =====================================
 API.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<any>) => {
+  (error) => {
     const status = error.response?.status
     const data = error.response?.data
 
-    console.error("🚨 API ERROR:", {
+    console.error("API ERROR:", {
       url: error.config?.url,
       method: error.config?.method,
       status,
       message: data || error.message,
     })
 
-    // 🔒 Handle unauthorized (auto logout)
     if (status === 401) {
       localStorage.removeItem("token")
       window.location.href = "/login"
@@ -62,76 +61,19 @@ API.interceptors.response.use(
 export default API
 
 // =====================================
-// TYPES
-// =====================================
-export interface DashboardData {
-  today_sales: number
-  today_purchase: number
-  receivables: number
-  payables: number
-  low_stock: Array<{ name: string; quantity: number }>
-  recent: Array<{ invoice: string; type: "sale" | "purchase"; party: string; amount: number }>
-}
-
-export interface ProductSearchItem {
-  id: number
-  name: string
-  unit_id: number
-  unit_name: string
-  sales_rate: number
-  barcode: string
-}
-
-export interface Party {
-  id: number
-  name: string
-  type: "customer" | "supplier"
-  phone: string
-  outstanding: number
-  credit_limit?: number
-}
-
-export interface SalesReportItem {
-  date: string
-  total_sales: number
-  total_returns: number
-  net_sales: number
-  transactions: number
-  avg_bill: number
-}
-
-export interface InventoryItem {
-  product_unit_id: number
-  name: string
-  unit_name: string
-  quantity: number
-  purchase_rate: number
-  stock_value: number
-}
-
-export interface InventoryMovement {
-  id: number
-  type: string
-  quantity: number
-  unit_name: string
-  reference: string
-  date: string
-}
-
-// =====================================
 // AUTH API
 // =====================================
 export const AuthAPI = {
-  login: (data: { username: string; password: string }) =>
+  login: (data) =>
     API.post("/api/auth/login", data).then((res) => res.data),
 
-  register: (data: any) =>
+  register: (data) =>
     API.post("/api/auth/register", data).then((res) => res.data),
 
   me: () =>
     API.get("/api/auth/me").then((res) => res.data),
 
-  changePassword: (data: { current: string; newPassword: string }) =>
+  changePassword: (data) =>
     API.post("/api/auth/change-password", data).then((res) => res.data),
 }
 
@@ -141,19 +83,19 @@ export const AuthAPI = {
 export const ProductAPI = {
   getAll: () => API.get("/api/products").then((res) => res.data),
 
-  search: (q: string) =>
+  search: (q) =>
     API.get(`/api/products/search?q=${q}`).then((res) => res.data),
 
-  getByBarcode: (code: string) =>
+  getByBarcode: (code) =>
     API.get(`/api/products/barcode/${code}`).then((res) => res.data),
 
-  create: (data: any) =>
+  create: (data) =>
     API.post("/api/products", data).then((res) => res.data),
 
-  update: (id: number, data: any) =>
+  update: (id, data) =>
     API.put(`/api/products/${id}`, data).then((res) => res.data),
 
-  delete: (id: number) =>
+  delete: (id) =>
     API.delete(`/api/products/${id}`).then((res) => res.data),
 }
 
@@ -161,13 +103,13 @@ export const ProductAPI = {
 // SALES API
 // =====================================
 export const SalesAPI = {
-  create: (data: any) =>
+  create: (data) =>
     API.post("/api/sales/create", data).then((res) => res.data),
 
-  getById: (id: number) =>
+  getById: (id) =>
     API.get(`/api/sales/${id}`).then((res) => res.data),
 
-  returnSale: (data: any) =>
+  returnSale: (data) =>
     API.post("/api/sales/return", data).then((res) => res.data),
 }
 
@@ -175,10 +117,10 @@ export const SalesAPI = {
 // PURCHASE API
 // =====================================
 export const PurchaseAPI = {
-  create: (data: any) =>
+  create: (data) =>
     API.post("/api/purchase/create", data).then((res) => res.data),
 
-  getById: (id: number) =>
+  getById: (id) =>
     API.get(`/api/purchase/${id}`).then((res) => res.data),
 }
 
@@ -195,7 +137,7 @@ export const InventoryAPI = {
   getLowStock: () =>
     API.get("/api/inventory/low-stock").then((res) => res.data),
 
-  adjust: (data: any) =>
+  adjust: (data) =>
     API.post("/api/inventory/adjust", data).then((res) => res.data),
 }
 
@@ -206,7 +148,7 @@ export const ReportAPI = {
   dashboard: () =>
     API.get("/api/reports/dashboard").then((res) => res.data),
 
-  sales: (params: { from: string; to: string } | any) =>
+  sales: (params) =>
     API.get("/api/reports/sales", { params }).then((res) => res.data),
 
   inventory: () =>
@@ -219,19 +161,19 @@ export const ReportAPI = {
 export const PartyAPI = {
   getAll: () => API.get("/api/parties").then((res) => res.data),
 
-  getById: (id: number) =>
+  getById: (id) =>
     API.get(`/api/parties/${id}`).then((res) => res.data),
 
-  create: (data: any) =>
+  create: (data) =>
     API.post("/api/parties", data).then((res) => res.data),
 
-  update: (id: number, data: any) =>
+  update: (id, data) =>
     API.put(`/api/parties/${id}`, data).then((res) => res.data),
 
-  delete: (id: number) =>
+  delete: (id) =>
     API.delete(`/api/parties/${id}`).then((res) => res.data),
 
-  ledger: (partyId: number) =>
+  ledger: (partyId) =>
     API.get(`/api/parties/${partyId}/ledger`).then((res) => res.data),
 }
 
@@ -241,16 +183,16 @@ export const PartyAPI = {
 export const UserAPI = {
   getAll: () => API.get("/api/users").then((res) => res.data),
 
-  create: (data: any) =>
+  create: (data) =>
     API.post("/api/users", data).then((res) => res.data),
 
-  update: (id: number, data: any) =>
+  update: (id, data) =>
     API.put(`/api/users/${id}`, data).then((res) => res.data),
 
-  toggle: (id: number) =>
+  toggle: (id) =>
     API.patch(`/api/users/${id}/toggle`).then((res) => res.data),
 
-  delete: (id: number) =>
+  delete: (id) =>
     API.delete(`/api/users/${id}`).then((res) => res.data),
 }
 
@@ -261,7 +203,7 @@ export const BackupAPI = {
   createBackup: () =>
     API.post("/api/backup/create").then((res) => res.data),
 
-  restoreBackup: (file: File) => {
+  restoreBackup: (file) => {
     const formData = new FormData()
     formData.append("file", file)
 
@@ -271,4 +213,15 @@ export const BackupAPI = {
       },
     }).then((res) => res.data)
   },
+}
+
+// =====================================
+// SYSTEM API
+// =====================================
+export const SystemAPI = {
+  info: () =>
+    API.get("/api/system").then((res) => res.data),
+
+  health: () =>
+    API.get("/health").then((res) => res.data),
 }

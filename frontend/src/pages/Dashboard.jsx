@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, TrendingUp, TrendingDown, IndianRupee } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { ReportAPI, type DashboardData } from "@/lib/api";
+import { ReportAPI } from "@/lib/api";
 
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -17,10 +17,10 @@ export default function Dashboard() {
 
   const metrics = data
     ? [
-        { label: "Today Sales", value: `₹${(data.today_sales ?? 0).toLocaleString()}`, changeType: "increase" as const },
-        { label: "Today Purchases", value: `₹${(data.today_purchase ?? 0).toLocaleString()}`, changeType: "increase" as const },
-        { label: "Total Receivables", value: `₹${(data.receivables ?? 0).toLocaleString()}`, changeType: "increase" as const },
-        { label: "Total Payables", value: `₹${(data.payables ?? 0).toLocaleString()}`, changeType: "decrease" as const },
+        { label: "Today Sales", value: `₹${(data.today_sales ?? 0).toLocaleString()}`, changeType: "increase" },
+        { label: "Today Purchases", value: `₹${(data.today_purchase ?? 0).toLocaleString()}`, changeType: "increase" },
+        { label: "Total Receivables", value: `₹${(data.receivables ?? 0).toLocaleString()}`, changeType: "increase" },
+        { label: "Total Payables", value: `₹${(data.payables ?? 0).toLocaleString()}`, changeType: "decrease" },
       ]
     : [];
 
@@ -72,13 +72,16 @@ export default function Dashboard() {
                   <h2 className="text-sm font-semibold text-foreground">Low Stock Alerts</h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {data.low_stock.map((item) => (
+                  {data.low_stock.map((item, idx) => (
                     <div
-                      key={item.name}
+                      key={`${item.product_unit_id ?? item.name}-${idx}`}
                       className="bg-background border border-border rounded-sm p-3"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <div className="text-sm font-medium text-foreground">{item.name}</div>
+                        <div>
+                          <div className="text-sm font-medium text-foreground">{item.name}</div>
+                          <div className="text-xs text-muted-foreground">{item.unit_name}</div>
+                        </div>
                         <span className="text-xs font-bold text-[hsl(var(--warning))]">
                           {item.quantity} units
                         </span>
@@ -104,9 +107,9 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.recent.map((tx) => (
+                      {data.recent.map((tx, idx) => (
                         <tr
-                          key={tx.invoice}
+                          key={`${tx.invoice ?? tx.id ?? 'tx'}-${idx}`}
                           className="border-b border-border hover:bg-secondary transition"
                         >
                           <td className="py-3 px-4 text-foreground font-mono text-xs">{tx.invoice}</td>

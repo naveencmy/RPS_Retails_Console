@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
 import { Search, Plus, Trash2, Edit2, AlertCircle } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { PartyAPI, type Party, type LedgerEntry, type CreatePartyRequest } from "@/lib/api";
+import { PartyAPI } from "@/lib/api";
 
 export default function Parties() {
-  const [partyType, setPartyType] = useState<"customer" | "supplier">("customer");
-  const [parties, setParties] = useState<Party[]>([]);
-  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [partyType, setPartyType] = useState("customer");
+  const [parties, setParties] = useState([]);
+  const [ledger, setLedger] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [selectedParty, setSelectedParty] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -30,7 +30,7 @@ export default function Parties() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleSelectParty = async (party: Party) => {
+  const handleSelectParty = async (party) => {
     setSelectedParty(party);
     setLedgerLoading(true);
     try {
@@ -47,14 +47,14 @@ export default function Parties() {
     if (!formData.name || !formData.phone) return;
     setSubmitting(true);
     try {
-      const payload: CreatePartyRequest = {
+      const payload = {
         name: formData.name,
         phone: formData.phone,
         email: formData.email || undefined,
         address: formData.address || undefined,
         type: partyType,
-        credit_limit: formData.creditLimit ? parseInt(formData.creditLimit) : undefined,
-        opening_balance: formData.openingBalance ? parseInt(formData.openingBalance) : undefined,
+        credit_limit: formData.creditLimit ? parseInt(formData.creditLimit) : 0,
+        opening_balance: formData.openingBalance ? parseInt(formData.openingBalance) : 0,
       };
       const created = await PartyAPI.create(payload);
       setParties((prev) => [...prev, created]);
@@ -67,7 +67,7 @@ export default function Parties() {
     }
   };
 
-  const handleDeleteParty = async (party: Party) => {
+  const handleDeleteParty = async (party) => {
     if (!confirm(`Delete ${party.name}?`)) return;
     try {
       await PartyAPI.delete(party.id);
@@ -141,7 +141,7 @@ export default function Parties() {
             <div className="bg-card border border-border rounded-md p-4">
               {/* Type Selector */}
               <div className="flex gap-4 mb-4">
-                {(["customer", "supplier"] as const).map((type) => (
+                {(["customer", "supplier"]).map((type) => (
                   <button
                     key={type}
                     onClick={() => { setPartyType(type); setSelectedParty(null); }}
@@ -320,7 +320,7 @@ export default function Parties() {
                     <label className="text-xs text-muted-foreground block mb-1">{label}</label>
                     <input
                       type={type}
-                      value={formData[key as keyof typeof formData]}
+                      value={formData[key]}
                       onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
                       className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     />

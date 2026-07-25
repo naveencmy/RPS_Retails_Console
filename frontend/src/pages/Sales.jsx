@@ -2,42 +2,34 @@ import { useEffect, useState, useRef } from "react";
 import { Search, Plus, Trash2, Receipt } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/use-auth";
-import { ProductAPI, PartyAPI, SalesAPI, type ProductSearchItem, type Party } from "@/lib/api";
-
-interface CartItem {
-  product_unit_id: number;
-  product: string;
-  unit: string;
-  quantity: number;
-  rate: number;
-}
-
+import { ProductAPI, PartyAPI, SalesAPI } from "@/lib/api";
 export default function Sales() {
   const { currentUser } = useAuth();
   const userRole = currentUser?.role ?? "owner";
   const canUsePayments = userRole === "cashier" || userRole === "manager" || userRole === "owner";
 
   // Party / Customer
-  const [allParties, setAllParties] = useState<Party[]>([]);
+  const [allParties, setAllParties] = useState([]);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<Party | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Product search
   const [productSearch, setProductSearch] = useState("");
-  const [apiProducts, setApiProducts] = useState<ProductSearchItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<ProductSearchItem | null>(null);
+  const [apiProducts, setApiProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantity, setQuantity] = useState("");
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef(null);
 
   // Cart
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [billType, setBillType] = useState<"sale" | "return">("sale");
-  const [orderSource, setOrderSource] = useState<"inperson" | "phone">("inperson");
+  const [cart, setCart] = useState([]);
+  const [billType, setBillType] = useState("sale");
+  const [orderSource, setOrderSource] = useState("inperson");
+  const [returnInvoiceId, setReturnInvoiceId] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
   const [cashInput, setCashInput] = useState("");
   const [upiInput, setUpiInput] = useState("");
-  const [summaryTab, setSummaryTab] = useState<"summary" | "payment">("summary");
-  const [billPaymentType, setBillPaymentType] = useState<"cash" | "credit">("cash");
+  const [summaryTab, setSummaryTab] = useState("summary");
+  const [billPaymentType, setBillPaymentType] = useState("cash");
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -66,7 +58,7 @@ export default function Sales() {
         p.phone.includes(customerSearch))
   );
 
-  const handleSelectProduct = (product: ProductSearchItem) => {
+  const handleSelectProduct = (product) => {
     setSelectedProduct(product);
     setProductSearch(product.name);
     setApiProducts([]);
@@ -103,10 +95,10 @@ export default function Sales() {
     setApiProducts([]);
   };
 
-  const handleDeleteCartItem = (unit_id: number) =>
+  const handleDeleteCartItem = (unit_id) =>
     setCart((prev) => prev.filter((i) => i.product_unit_id !== unit_id));
 
-  const handleQuantityChange = (unit_id: number, newQty: number) => {
+  const handleQuantityChange = (unit_id, newQty) => {
     if (newQty <= 0) { handleDeleteCartItem(unit_id); return; }
     setCart((prev) => prev.map((i) => i.product_unit_id === unit_id ? { ...i, quantity: newQty } : i));
   };
@@ -127,13 +119,18 @@ export default function Sales() {
 
   const handleFinalizeBill = async () => {
     if (cart.length === 0 || submitting) return;
+    if (billType === "return" && !returnInvoiceId) {
+      setSuccessMsg("✗ Original invoice ID is required for returns");
+      setTimeout(() => setSuccessMsg(""), 3000);
+      return;
+    }
     setSubmitting(true);
     try {
       const payments = [
-        cashAmount > 0 ? { method: "cash" as const, amount: cashAmount } : null,
-        upiAmount > 0 ? { method: "upi" as const, amount: upiAmount } : null,
-        creditAmount > 0 ? { method: "credit" as const, amount: creditAmount } : null,
-      ].filter(Boolean) as { method: "cash" | "upi" | "credit"; amount: number }[];
+        cashAmount > 0 ? { method: "cash", amount: cashAmount } : null,
+        upiAmount > 0 ? { method: "upi", amount: upiAmount } : null,
+        creditAmount > 0 ? { method: "credit", amount: creditAmount } : null,
+      ].filter(Boolean);
 
       if (payments.length === 0) payments.push({ method: "cash", amount: grandTotal });
 
@@ -154,6 +151,7 @@ export default function Sales() {
           })
         : SalesAPI.returnSale({
             party_id: selectedCustomer?.id ?? null,
+            invoice_id: parseInt(returnInvoiceId),
             subtotal,
             discount,
             tax: 0,
@@ -185,7 +183,7 @@ export default function Sales() {
   return (
     <Layout>
       <div className="space-y-4 pb-96">
-        
+
 
         {/* Header */}
         <div className="bg-card border border-border rounded-md p-4 flex gap-6 items-start">
@@ -194,18 +192,30 @@ export default function Sales() {
               <label className="text-xs text-muted-foreground block mb-2">Bill Type</label>
               <select
                 value={billType}
-                onChange={(e) => setBillType(e.target.value as "sale" | "return")}
+                onChange={(e) => setBillType(e.target.value)}
                 className="bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="sale">Sale</option>
                 <option value="return">Return</option>
               </select>
             </div>
+            {billType === "return" && (
+              <div>
+                <label className="text-xs text-muted-foreground block mb-2">Original Invoice ID *</label>
+                <input
+                  type="number"
+                  value={returnInvoiceId}
+                  onChange={(e) => setReturnInvoiceId(e.target.value)}
+                  placeholder="Invoice #"
+                  className="bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary w-36"
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs text-muted-foreground block mb-2">Order Source</label>
               <select
                 value={orderSource}
-                onChange={(e) => setOrderSource(e.target.value as "inperson" | "phone")}
+                onChange={(e) => setOrderSource(e.target.value)}
                 className="bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="inperson">In-Person</option>
@@ -455,7 +465,7 @@ export default function Sales() {
                       {canUsePayments ? (
                         <select
                           value={billPaymentType}
-                          onChange={(e) => setBillPaymentType(e.target.value as "cash" | "credit")}
+                          onChange={(e) => setBillPaymentType(e.target.value)}
                           className="w-full bg-input border border-border rounded-sm px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                         >
                           <option value="cash">Cash</option>

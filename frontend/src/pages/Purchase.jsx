@@ -1,29 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Plus, Trash2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { ProductAPI, PartyAPI, PurchaseAPI, type ProductSearchItem, type Party } from "@/lib/api";
-
-interface PurchaseItem {
-  product_unit_id: number;
-  product: string;
-  unit: string;
-  quantity: number;
-  rate: number;
-}
-
+import { ProductAPI, PartyAPI, PurchaseAPI } from "@/lib/api";
 export default function Purchase() {
-  const [allParties, setAllParties] = useState<Party[]>([]);
+  const [allParties, setAllParties] = useState([]);
   const [supplierSearch, setSupplierSearch] = useState("");
-  const [selectedSupplier, setSelectedSupplier] = useState<Party | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState(null);
 
   const [productSearch, setProductSearch] = useState("");
-  const [apiProducts, setApiProducts] = useState<ProductSearchItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<ProductSearchItem | null>(null);
+  const [apiProducts, setApiProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantity, setQuantity] = useState("");
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef(null);
 
-  const [items, setItems] = useState<PurchaseItem[]>([]);
-  const [billType, setBillType] = useState<"purchase" | "return">("purchase");
+  const [items, setItems] = useState([]);
+  const [billType, setBillType] = useState("purchase");
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -50,7 +41,7 @@ export default function Purchase() {
         p.phone.includes(supplierSearch))
   );
 
-  const handleSelectProduct = (product: ProductSearchItem) => {
+  const handleSelectProduct = (product) => {
     setSelectedProduct(product);
     setProductSearch(product.name);
     setApiProducts([]);
@@ -86,10 +77,10 @@ export default function Purchase() {
     setApiProducts([]);
   };
 
-  const handleDeleteItem = (unit_id: number) =>
+  const handleDeleteItem = (unit_id) =>
     setItems((prev) => prev.filter((i) => i.product_unit_id !== unit_id));
 
-  const handleQuantityChange = (unit_id: number, newQty: number) => {
+  const handleQuantityChange = (unit_id, newQty) => {
     if (newQty <= 0) { handleDeleteItem(unit_id); return; }
     setItems((prev) => prev.map((i) => i.product_unit_id === unit_id ? { ...i, quantity: newQty } : i));
   };
@@ -145,7 +136,7 @@ export default function Purchase() {
               <label className="text-xs text-muted-foreground block mb-2">Bill Type</label>
               <select
                 value={billType}
-                onChange={(e) => setBillType(e.target.value as "purchase" | "return")}
+                onChange={(e) => setBillType(e.target.value)}
                 className="bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="purchase">Purchase</option>

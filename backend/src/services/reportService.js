@@ -7,14 +7,14 @@ exports.getDashboard = async () => {
     lowStock,
     receivablesRow,
     payablesRow,
-    recent
+    recent,
   ] = await Promise.all([
     reportRepo.getTodaySales(),
     reportRepo.getTodayPurchase(),
     reportRepo.getLowStock(),
     reportRepo.getTotalReceivables(),
     reportRepo.getPayablesSummary(),
-    reportRepo.getRecentTransactions()
+    reportRepo.getRecentTransactions(),
   ])
 
   return {
@@ -23,14 +23,26 @@ exports.getDashboard = async () => {
     receivables: Number(receivablesRow.total_receivables) || 0,
     payables: Number(payablesRow.total_payables) || 0,
     low_stock: lowStock,
-    recent
+    recent,
   }
 }
 
 exports.getSalesReport = async (from, to) => {
   if (!from || !to) {
-    throw new Error("Date range required")
+    throw Object.assign(new Error('Date range required (from, to)'), { status: 400 })
   }
+
+  const fromDate = new Date(from)
+  const toDate = new Date(to)
+
+  if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+    throw Object.assign(new Error('Invalid date format'), { status: 400 })
+  }
+
+  if (fromDate > toDate) {
+    throw Object.assign(new Error('From date must be before to date'), { status: 400 })
+  }
+
   return reportRepo.getSalesReport(from, to)
 }
 

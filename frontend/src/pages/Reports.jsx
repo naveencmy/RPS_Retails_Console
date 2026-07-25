@@ -1,21 +1,44 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Download, Filter, AlertCircle } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { ReportAPI, InventoryAPI, PartyAPI, type SalesReportItem, type InventoryItem, type Party } from "@/lib/api";
-
+import { ReportAPI, InventoryAPI, PartyAPI } from "@/lib/api";
 const today = new Date().toISOString().slice(0, 10);
 const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
 export default function Reports() {
-  const [reportType, setReportType] = useState<"sales" | "inventory" | "parties">("sales");
+  const [reportType, setReportType] = useState("sales");
   const [startDate, setStartDate] = useState(weekAgo);
   const [endDate, setEndDate] = useState(today);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [salesData, setSalesData] = useState<SalesReportItem[]>([]);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
-  const [partiesData, setPartiesData] = useState<Party[]>([]);
+  const [rawSalesData, setRawSalesData] = useState([]);
+  const [inventoryData, setInventoryData] = useState([]);
+  const [partiesData, setPartiesData] = useState([]);
+
+  const salesData = useMemo(() => {
+    const grouped = {};
+    for (const inv of rawSalesData) {
+      const date = inv.created_at?.slice(0, 10) ?? "unknown";
+      if (!grouped[date]) grouped[date] = { sales: 0, returns: 0, count: 0 };
+      if (inv.grand_total >= 0) {
+        grouped[date].sales += Number(inv.grand_total);
+      } else {
+        grouped[date].returns += Math.abs(Number(inv.grand_total));
+      }
+      grouped[date].count += 1;
+    }
+    return Object.entries(grouped)
+      .map(([date, d]) => ({
+        date,
+        total_sales: d.sales,
+        total_returns: d.returns,
+        net_sales: d.sales - d.returns,
+        transactions: d.count,
+        avg_bill: d.count > 0 ? Math.round((d.sales - d.returns) / d.count) : 0,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [rawSalesData]);
 
   const fetchReport = async () => {
     setLoading(true);
@@ -23,7 +46,7 @@ export default function Reports() {
     try {
       if (reportType === "sales") {
         const data = await ReportAPI.sales({ from: startDate, to: endDate });
-        setSalesData(data);
+        setRawSalesData(data);
       } else if (reportType === "inventory") {
         const data = await InventoryAPI.getAll();
         setInventoryData(data);
@@ -92,7 +115,7 @@ export default function Reports() {
             <label className="text-xs text-muted-foreground block mb-2">Report Type</label>
             <select
               value={reportType}
-              onChange={(e) => setReportType(e.target.value as typeof reportType)}
+              onChange={(e) => setReportType(e.target.value)}
               className="bg-input border border-border rounded-sm px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="sales">Sales Report</option>

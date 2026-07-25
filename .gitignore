@@ -41,3 +41,15 @@ C:/Users/*/AppData/Local/Temp/*
 
 .gitconfig
 .gitignore.bak
+
+# Database files
+seed.sql
+*.backup
+*.sql.dump
+
+# digest files
+*.md5
+*.txt
+
+#Unwanted files
+/PBL_work

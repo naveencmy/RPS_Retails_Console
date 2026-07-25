@@ -1,37 +1,24 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-
-export type Role = "cashier" | "worker" | "manager" | "owner";
-
-export interface CurrentUser {
-  name: string;
-  role: Role;
-}
-
-interface AuthContextValue {
-  currentUser: CurrentUser | null;
-  login: (user: CurrentUser) => void;
-  logout: () => void;
-}
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const AUTH_STORAGE_KEY = "retailpos.currentUser";
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthContext = createContext(null);
 
-const readStoredUser = (): CurrentUser | null => {
+const readStoredUser = () => {
   if (typeof window === "undefined") return null;
 
   const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
   if (!stored) return null;
 
   try {
-    return JSON.parse(stored) as CurrentUser;
+    return JSON.parse(stored);
   } catch {
     return null;
   }
 };
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => readStoredUser());
+export const AuthProvider = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState(() => readStoredUser());
 
   useEffect(() => {
     if (currentUser) {
@@ -44,7 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo(
     () => ({
       currentUser,
-      login: (user: CurrentUser) => setCurrentUser(user),
+      login: (user) => setCurrentUser(user),
       logout: () => {
         localStorage.removeItem("token");
         setCurrentUser(null);

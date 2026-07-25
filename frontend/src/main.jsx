@@ -20,7 +20,7 @@ import { AuthProvider, useAuth } from "./hooks/use-auth";
 
 const queryClient = new QueryClient();
 
-const RequireAuth = ({ children }: { children: JSX.Element }) => {
+const RequireAuth = ({ children }) => {
   const { currentUser } = useAuth();
 
   if (!currentUser) {
@@ -36,7 +36,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* Public entry pages */}
             <Route path="/" element={<Home />} />
@@ -108,4 +108,4 @@ const App = () => (
   </QueryClientProvider>
 );
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")).render(<App />);

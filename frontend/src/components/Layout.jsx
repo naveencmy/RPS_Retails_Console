@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -15,11 +15,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-
-interface LayoutProps {
-  children: ReactNode;
-}
-
 const navItems = [
   { path: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { path: "/sales", icon: ShoppingCart, label: "Sales", shortcut: "F1" },
@@ -30,7 +25,7 @@ const navItems = [
   { path: "/settings", icon: Settings, label: "Settings" },
 ];
 
-export const Layout = ({ children }: LayoutProps) => {
+export const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
@@ -62,7 +57,7 @@ export const Layout = ({ children }: LayoutProps) => {
       className="h-screen bg-background flex flex-col"
       style={{
         "--sidebar-width": isCollapsed ? "4rem" : "16rem",
-      } as CSSProperties}
+      }}
     >
       <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6 fixed top-0 left-0 right-0 z-40">
         <div className="flex items-center gap-3">

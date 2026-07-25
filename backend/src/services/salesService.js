@@ -5,60 +5,43 @@ exports.createSale = async (data, userId) => {
   const client = await db.connect()
 
   try {
-    await client.query("BEGIN")
+    await client.query('BEGIN')
 
     if (!data.items || data.items.length === 0) {
-      throw new Error("Items required")
+      throw Object.assign(new Error('At least one item is required'), { status: 400 })
     }
 
-    // 1. Validate stock (LOCK)
+    if (!data.total || data.total <= 0) {
+      throw Object.assign(new Error('Total must be greater than 0'), { status: 400 })
+    }
+
+    for (const item of data.items) {
+      if (!item.product_unit_id || !item.quantity || item.quantity <= 0) {
+        throw Object.assign(new Error('Invalid item: product_unit_id and positive quantity required'), { status: 400 })
+      }
+      if (!item.rate || item.rate < 0) {
+        throw Object.assign(new Error('Invalid item: rate must be non-negative'), { status: 400 })
+      }
+    }
+
     await salesRepo.validateStock(client, data.items)
 
-    // 2. Create invoice
     const invoice = await salesRepo.insertInvoice(client, data, userId)
 
-    // 3. Items + stock movement
-    await salesRepo.insertItemsAndMovements(
-      client,
-      invoice.id,
-      data.items,
-      userId
-    )
+    await salesRepo.insertItemsAndMovements(client, invoice.id, data.items, userId)
 
-    // 4. Payments
-    const totalPaid = await salesRepo.insertPayments(
-      client,
-      invoice.id,
-      data.payments || []
-    )
+    const totalPaid = await salesRepo.insertPayments(client, invoice.id, data.payments || [])
 
-    // 5. Ledger: SALE (DEBIT)
-    await salesRepo.insertLedgerEntry(
-      client,
-      data.party_id,
-      invoice.id,
-      data.total,
-      'debit',
-      'Sale'
-    )
+    await salesRepo.insertLedgerEntry(client, data.party_id, invoice.id, data.total, 'debit', 'Sale')
 
-    // 6. Ledger: PAYMENTS (CREDIT)
     if (totalPaid > 0) {
-      await salesRepo.insertLedgerEntry(
-        client,
-        data.party_id,
-        invoice.id,
-        totalPaid,
-        'credit',
-        'Payment Received'
-      )
+      await salesRepo.insertLedgerEntry(client, data.party_id, invoice.id, totalPaid, 'credit', 'Payment Received')
     }
 
-    await client.query("COMMIT")
+    await client.query('COMMIT')
     return invoice
-
   } catch (err) {
-    await client.query("ROLLBACK")
+    await client.query('ROLLBACK')
     throw err
   } finally {
     client.release()
@@ -66,44 +49,51 @@ exports.createSale = async (data, userId) => {
 }
 
 exports.getSaleById = async (id) => {
-  return salesRepo.getSaleById(id)
+  if (!id) {
+    throw Object.assign(new Error('Sale ID required'), { status: 400 })
+  }
+  const sale = await salesRepo.getSaleById(id)
+  if (!sale || !sale.invoice) {
+    throw Object.assign(new Error('Sale not found'), { status: 404 })
+  }
+  return sale
 }
 
 exports.returnSale = async (data, userId) => {
   const client = await db.connect()
 
   try {
-    await client.query("BEGIN")
+    await client.query('BEGIN')
 
-    // 1. Stock reverse
+    if (!data.invoice_id) {
+      throw Object.assign(new Error('Original invoice ID is required for returns'), { status: 400 })
+    }
+
+    if (!data.items || data.items.length === 0) {
+      throw Object.assign(new Error('At least one item is required'), { status: 400 })
+    }
+
+    const originalInvoice = await salesRepo.getSaleById(data.invoice_id)
+    if (!originalInvoice || !originalInvoice.invoice) {
+      throw Object.assign(new Error('Original invoice not found'), { status: 404 })
+    }
+
     for (const item of data.items) {
-      await salesRepo.insertStockMovement(
-        client,
-        item.product_unit_id,
-        item.quantity,
-        'sale_return',
-        data.invoice_id,
-        userId
-      )
+      if (!item.product_unit_id || !item.quantity || item.quantity <= 0) {
+        throw Object.assign(new Error('Invalid item for return'), { status: 400 })
+      }
+
+      await salesRepo.insertStockMovement(client, item.product_unit_id, item.quantity, 'sale_return', data.invoice_id, userId)
     }
 
-    // 2. Ledger reverse
     if (data.party_id) {
-      await salesRepo.insertLedgerEntry(
-        client,
-        data.party_id,
-        data.invoice_id,
-        data.total,
-        'credit',
-        'Sale Return'
-      )
+      await salesRepo.insertLedgerEntry(client, data.party_id, data.invoice_id, data.total, 'credit', 'Sale Return')
     }
 
-    await client.query("COMMIT")
-    return { message: "Return processed" }
-
+    await client.query('COMMIT')
+    return { message: 'Return processed', invoice_number: originalInvoice.invoice.invoice_number }
   } catch (err) {
-    await client.query("ROLLBACK")
+    await client.query('ROLLBACK')
     throw err
   } finally {
     client.release()

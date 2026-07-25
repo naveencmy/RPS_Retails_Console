@@ -12,17 +12,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+const ROLES = ["owner", "manager", "worker","cashier"];
 
-interface SystemUser {
-  id: number;
-  username: string;
-  role: string;
-  active: boolean;
-}
-
-const ROLES = ["owner", "manager", "worker","cashier"] as const;
-
-const roleBadgeClass: Record<string, string> = {
+const roleBadgeClass = {
   owner: "bg-[hsl(var(--error))] text-white",
   manager: "bg-[hsl(var(--warning))] text-black",
   worker: "bg-[hsl(var(--info))] text-white",
@@ -33,7 +25,7 @@ export default function Settings() {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<"general" | "users" | "backup" | "security">(
+  const [activeTab, setActiveTab] = useState(
     "general"
   );
 
@@ -47,31 +39,31 @@ export default function Settings() {
   const [timezone, setTimezone] = useState("IST");
 
   /* ── Users ── */
-  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
   // Add user dialog
   const [showAddUser, setShowAddUser] = useState(false);
   const [addUsername, setAddUsername] = useState("");
   const [addPassword, setAddPassword] = useState("");
-  const [addRole, setAddRole] = useState<string>("worker");
+  const [addRole, setAddRole] = useState("worker");
   const [addingUser, setAddingUser] = useState(false);
 
   // Edit user dialog
   const [showEditUser, setShowEditUser] = useState(false);
-  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
-  const [editRole, setEditRole] = useState<string>("worker");
+  const [editingUser, setEditingUser] = useState(null);
+  const [editRole, setEditRole] = useState("worker");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Toggle state
-  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState(null);
 
   /* ── Backup ── */
   const [backupLoading, setBackupLoading] = useState(false);
-  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreFile, setRestoreFile] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [backupFrequency, setBackupFrequency] = useState("Every 6 hours");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef(null);
 
   /* ── Security ── */
   const [currentPwd, setCurrentPwd] = useState("");
@@ -122,7 +114,7 @@ export default function Settings() {
     }
   };
 
-  const handleOpenEdit = (user: SystemUser) => {
+  const handleOpenEdit = (user) => {
     setEditingUser(user);
     setEditRole(user.role);
     setShowEditUser(true);
@@ -143,7 +135,7 @@ export default function Settings() {
     }
   };
 
-  const handleToggleUser = async (user: SystemUser) => {
+  const handleToggleUser = async (user) => {
     setTogglingId(user.id);
     try {
       await UserAPI.toggle(user.id);
@@ -244,8 +236,8 @@ export default function Settings() {
         {/* Tabs */}
         <div className="bg-card border border-border rounded-md">
           <div className="flex border-b border-border">
-            {(["general", "users", "backup", "security"] as const).map((tab) => {
-              const labels: Record<typeof tab, string> = {
+            {(["general", "users", "backup", "security"]).map((tab) => {
+              const labels = {
                 general: "General",
                 users: "Users & Roles",
                 backup: "Backup & Restore",
